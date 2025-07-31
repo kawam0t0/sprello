@@ -1,103 +1,622 @@
-import Image from "next/image";
+"use client"
+
+import type React from "react"
+
+import { useState } from "react"
+import { Plus, MoreHorizontal, X, Edit, Calendar, Trash2 } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
+import { Card } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
+
+interface CardType {
+  id: string
+  title: string
+  status: string
+  memo: string
+  openDate: string
+  startDate: string
+  candidateUrl: string
+  candidateUrl2: string
+  companyName: string
+  companyUrl: string
+}
+
+interface ListType {
+  id: string
+  title: string
+  cards: CardType[]
+}
+
+interface BoardType {
+  id: string
+  title: string
+  lists: ListType[]
+}
 
 export default function Home() {
-  return (
-    <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="font-mono list-inside list-decimal text-sm/6 text-center sm:text-left">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] font-mono font-semibold px-1 py-0.5 rounded">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [currentBoard, setCurrentBoard] = useState<BoardType>({
+    id: "1",
+    title: "Sprello",
+    lists: [
+      {
+        id: "0",
+        title: "完了",
+        cards: [],
+      },
+      {
+        id: "1",
+        title: "Aヨミ",
+        cards: [], // テストカードを削除
+      },
+      {
+        id: "2",
+        title: "Bヨミ",
+        cards: [], // テストカードを削除
+      },
+      {
+        id: "3",
+        title: "Cヨミ",
+        cards: [], // テストカードを削除
+      },
+      {
+        id: "4",
+        title: "未確定",
+        cards: [], // テストカードを削除
+      },
+    ],
+  })
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  const [statusOptions, setStatusOptions] = useState(["見積待ち", "融資待ち", "補助金待ち", "社内稟議待ち"])
+  const [newStatusOption, setNewStatusOption] = useState("")
+  const [showAddStatus, setShowAddStatus] = useState(false)
+  const [selectedCard, setSelectedCard] = useState<CardType | null>(null)
+  const [dialogOpen, setDialogOpen] = useState(false)
+  const [newCardTitle, setNewCardTitle] = useState("")
+  const [newListTitle, setNewListTitle] = useState("")
+  const [showAddCard, setShowAddCard] = useState<string | null>(null)
+  const [showAddList, setShowAddList] = useState(false)
+  const [draggedCard, setDraggedCard] = useState<CardType | null>(null)
+  const [draggedFromList, setDraggedFromList] = useState<string | null>(null)
+
+  const addCard = (listId: string) => {
+    if (!newCardTitle.trim()) return
+
+    const newCard: CardType = {
+      id: Date.now().toString(),
+      title: newCardTitle,
+      status: "",
+      memo: "",
+      openDate: "",
+      startDate: "",
+      candidateUrl: "",
+      candidateUrl2: "",
+      companyName: "",
+      companyUrl: "",
+    }
+
+    setCurrentBoard((prev) => ({
+      ...prev,
+      lists: prev.lists.map((list) => (list.id === listId ? { ...list, cards: [...list.cards, newCard] } : list)),
+    }))
+
+    setNewCardTitle("")
+    setShowAddCard(null)
+  }
+
+  const addList = () => {
+    if (!newListTitle.trim()) return
+
+    const newList: ListType = {
+      id: Date.now().toString(),
+      title: newListTitle,
+      cards: [],
+    }
+
+    setCurrentBoard((prev) => ({
+      ...prev,
+      lists: [...prev.lists, newList],
+    }))
+
+    setNewListTitle("")
+    setShowAddList(false)
+  }
+
+  const addStatusOption = () => {
+    if (!newStatusOption.trim() || statusOptions.includes(newStatusOption)) return
+
+    setStatusOptions([...statusOptions, newStatusOption])
+    setNewStatusOption("")
+    setShowAddStatus(false)
+  }
+
+  const updateCard = (updatedCard: CardType) => {
+    setCurrentBoard((prev) => ({
+      ...prev,
+      lists: prev.lists.map((list) => ({
+        ...list,
+        cards: list.cards.map((card) => (card.id === updatedCard.id ? updatedCard : card)),
+      })),
+    }))
+  }
+
+  const handleCardDoubleClick = (card: CardType) => {
+    setSelectedCard(card)
+    setDialogOpen(true)
+  }
+
+  const handleDragStart = (card: CardType, fromListId: string) => {
+    setDraggedCard(card)
+    setDraggedFromList(fromListId)
+  }
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault()
+  }
+
+  const handleDrop = (toListId: string) => {
+    if (!draggedCard || !draggedFromList) return
+
+    setCurrentBoard((prev) => ({
+      ...prev,
+      lists: prev.lists.map((list) => {
+        if (list.id === draggedFromList) {
+          return {
+            ...list,
+            cards: list.cards.filter((card) => card.id !== draggedCard.id),
+          }
+        }
+        if (list.id === toListId) {
+          return {
+            ...list,
+            cards: [...list.cards, draggedCard],
+          }
+        }
+        return list
+      }),
+    }))
+
+    setDraggedCard(null)
+    setDraggedFromList(null)
+  }
+
+  const getListColor = (listTitle: string) => {
+    switch (listTitle) {
+      case "完了":
+        return "bg-red-100" // bg-gray-100 から bg-red-100 に変更
+      case "Aヨミ":
+        return "bg-green-100"
+      case "Bヨミ":
+        return "bg-blue-100"
+      case "Cヨミ":
+        return "bg-orange-100"
+      case "未確定":
+        return "bg-gray-100"
+      default:
+        return "bg-gray-100"
+    }
+  }
+
+  const deleteCard = (cardId: string, listId: string) => {
+    setCurrentBoard((prev) => ({
+      ...prev,
+      lists: prev.lists.map((list) =>
+        list.id === listId ? { ...list, cards: list.cards.filter((card) => card.id !== cardId) } : list,
+      ),
+    }))
+  }
+
+  return (
+    <div className="h-screen bg-yellow-400 flex flex-col">
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <div className="bg-yellow-500 text-white p-4">
+          <div className="flex items-center justify-between">
+            {/* Logo and Title */}
+            <div className="flex items-center gap-3">
+              <img src="/images/sprello-logo.png" alt="Sprello Logo" width={40} height={40} className="rounded-lg" />
+              <h1 className="text-2xl font-bold">{currentBoard.title}</h1>
+            </div>
+
+            {/* Right side - can be used for user menu, settings, etc. */}
+            <div className="flex items-center gap-2">{/* Placeholder for future features */}</div>
+          </div>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        {/* Board Content */}
+        <div className="flex-1 p-2 sm:p-4 overflow-x-auto">
+          <div className="flex gap-2 sm:gap-4 h-full justify-center">
+            {/* Lists */}
+            {currentBoard.lists.map((list) => (
+              <div
+                key={list.id}
+                className={`w-80 min-w-80 sm:w-72 ${getListColor(list.title)} rounded-lg p-3 flex flex-col max-h-full flex-shrink-0`}
+                onDragOver={handleDragOver}
+                onDrop={() => handleDrop(list.id)}
+              >
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-medium text-gray-800">{list.title}</h3>
+                    <span className="bg-gray-300 text-gray-700 text-xs px-2 py-1 rounded-full">
+                      {list.cards.length}
+                    </span>
+                  </div>
+                  <Button variant="ghost" size="sm">
+                    <MoreHorizontal className="w-4 h-4" />
+                  </Button>
+                </div>
+
+                <div className="flex-1 space-y-2 overflow-y-auto">
+                  {list.cards.map((card) => (
+                    <Card
+                      key={card.id}
+                      className="p-3 bg-white shadow-sm hover:shadow-md cursor-pointer transition-shadow"
+                      draggable
+                      onDragStart={() => handleDragStart(card, list.id)}
+                      onDoubleClick={() => handleCardDoubleClick(card)}
+                    >
+                      <div className="flex items-start justify-between">
+                        <p className="text-sm text-gray-800 flex-1">{card.title}</p>
+                        <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+                          <Edit
+                            className="w-3 h-3 text-gray-400 cursor-pointer hover:text-gray-600"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleCardDoubleClick(card)
+                            }}
+                          />
+                          <Trash2
+                            className="w-3 h-3 text-red-400 cursor-pointer hover:text-red-600"
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              deleteCard(card.id, list.id)
+                            }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Status and Date Information */}
+                      <div className="mt-2 space-y-1">
+                        {card.status && (
+                          <div>
+                            <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
+                              {card.status}
+                            </span>
+                          </div>
+                        )}
+                        {card.openDate && (
+                          <div>
+                            <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">
+                              OPEN:{" "}
+                              {new Date(card.openDate).toLocaleDateString("ja-JP", {
+                                year: "numeric",
+                                month: "numeric",
+                                day: "numeric",
+                              })}
+                              予定
+                            </span>
+                          </div>
+                        )}
+                        {card.startDate && (
+                          <div>
+                            <span className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full">
+                              着工:{" "}
+                              {new Date(card.startDate).toLocaleDateString("ja-JP", {
+                                year: "numeric",
+                                month: "numeric",
+                                day: "numeric",
+                              })}
+                              予定
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Company Name if available */}
+                      {card.companyName && (
+                        <div className="mt-1">
+                          <span className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full">
+                            {card.companyName}
+                          </span>
+                        </div>
+                      )}
+                    </Card>
+                  ))}
+                </div>
+
+                {/* Add Card */}
+                <div className="mt-2">
+                  {showAddCard === list.id ? (
+                    <div className="space-y-2">
+                      <Input
+                        placeholder="カードのタイトルを入力..."
+                        value={newCardTitle}
+                        onChange={(e) => setNewCardTitle(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            addCard(list.id)
+                          } else if (e.key === "Escape") {
+                            setShowAddCard(null)
+                            setNewCardTitle("")
+                          }
+                        }}
+                        autoFocus
+                      />
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => addCard(list.id)}
+                          className="bg-yellow-500 hover:bg-yellow-600"
+                        >
+                          カードを追加
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setShowAddCard(null)
+                            setNewCardTitle("")
+                          }}
+                        >
+                          <X className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start text-gray-600 hover:bg-gray-200"
+                      onClick={() => setShowAddCard(list.id)}
+                    >
+                      <Plus className="w-4 h-4 mr-2" />
+                      カードを追加
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+
+            {/* Add List */}
+            <div className="w-80 min-w-80 flex-shrink-0">
+              {showAddList ? (
+                <div className="bg-gray-100 rounded-lg p-3">
+                  <Input
+                    placeholder="リストのタイトルを入力..."
+                    value={newListTitle}
+                    onChange={(e) => setNewListTitle(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        addList()
+                      } else if (e.key === "Escape") {
+                        setShowAddList(false)
+                        setNewListTitle("")
+                      }
+                    }}
+                    autoFocus
+                  />
+                  <div className="flex gap-2 mt-2">
+                    <Button size="sm" onClick={addList} className="bg-yellow-500 hover:bg-yellow-600">
+                      リストを追加
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setShowAddList(false)
+                        setNewListTitle("")
+                      }}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start bg-white/20 text-white hover:bg-white/30 h-auto p-3"
+                  onClick={() => setShowAddList(true)}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  リストを追加
+                </Button>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Card Detail Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>タスク詳細</DialogTitle>
+          </DialogHeader>
+          {selectedCard && (
+            <div className="space-y-6">
+              {/* Title */}
+              <div>
+                <Label htmlFor="title">タイトル</Label>
+                <Input
+                  id="title"
+                  value={selectedCard.title}
+                  onChange={(e) => setSelectedCard({ ...selectedCard, title: e.target.value })}
+                />
+              </div>
+
+              {/* Status */}
+              <div>
+                <Label htmlFor="status">現在のステータス</Label>
+                <div className="flex gap-2 mt-1">
+                  <Select
+                    value={selectedCard.status}
+                    onValueChange={(value) => setSelectedCard({ ...selectedCard, status: value })}
+                  >
+                    <SelectTrigger className="flex-1">
+                      <SelectValue placeholder="ステータスを選択" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {statusOptions.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Button variant="outline" size="sm" onClick={() => setShowAddStatus(true)}>
+                    <Plus className="w-4 h-4" />
+                  </Button>
+                </div>
+
+                {/* Add Status Option */}
+                {showAddStatus && (
+                  <div className="flex gap-2 mt-2">
+                    <Input
+                      placeholder="新しいステータスを入力..."
+                      value={newStatusOption}
+                      onChange={(e) => setNewStatusOption(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          addStatusOption()
+                        } else if (e.key === "Escape") {
+                          setShowAddStatus(false)
+                          setNewStatusOption("")
+                        }
+                      }}
+                      autoFocus
+                    />
+                    <Button size="sm" onClick={addStatusOption}>
+                      追加
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setShowAddStatus(false)
+                        setNewStatusOption("")
+                      }}
+                    >
+                      <X className="w-4 h-4" />
+                    </Button>
+                  </div>
+                )}
+              </div>
+
+              {/* Memo */}
+              <div>
+                <Label htmlFor="memo">メモ</Label>
+                <Textarea
+                  id="memo"
+                  placeholder="詳細なメモを入力してください..."
+                  value={selectedCard.memo}
+                  onChange={(e) => setSelectedCard({ ...selectedCard, memo: e.target.value })}
+                  rows={4}
+                />
+              </div>
+
+              {/* Dates */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="openDate">OPEN日</Label>
+                  <div className="relative">
+                    <Input
+                      id="openDate"
+                      type="date"
+                      value={selectedCard.openDate}
+                      onChange={(e) => setSelectedCard({ ...selectedCard, openDate: e.target.value })}
+                    />
+                    <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="startDate">着工日</Label>
+                  <div className="relative">
+                    <Input
+                      id="startDate"
+                      type="date"
+                      value={selectedCard.startDate}
+                      onChange={(e) => setSelectedCard({ ...selectedCard, startDate: e.target.value })}
+                    />
+                    <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Company Information */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-gray-800">取引先企業様情報</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="companyName">企業様名</Label>
+                    <Input
+                      id="companyName"
+                      placeholder="株式会社○○"
+                      value={selectedCard.companyName}
+                      onChange={(e) => setSelectedCard({ ...selectedCard, companyName: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="companyUrl">企業URL</Label>
+                    <Input
+                      id="companyUrl"
+                      type="url"
+                      placeholder="https://company.example.com"
+                      value={selectedCard.companyUrl}
+                      onChange={(e) => setSelectedCard({ ...selectedCard, companyUrl: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Candidate URLs */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-gray-800">候補地情報</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="candidateUrl">候補地URL 1</Label>
+                    <Input
+                      id="candidateUrl"
+                      type="url"
+                      placeholder="https://example.com"
+                      value={selectedCard.candidateUrl}
+                      onChange={(e) => setSelectedCard({ ...selectedCard, candidateUrl: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="candidateUrl2">候補地URL 2</Label>
+                    <Input
+                      id="candidateUrl2"
+                      type="url"
+                      placeholder="https://example.com"
+                      value={selectedCard.candidateUrl2}
+                      onChange={(e) => setSelectedCard({ ...selectedCard, candidateUrl2: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex justify-end gap-2 pt-4">
+                <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                  キャンセル
+                </Button>
+                <Button
+                  onClick={() => {
+                    updateCard(selectedCard)
+                    setDialogOpen(false)
+                  }}
+                  className="bg-yellow-500 hover:bg-yellow-600"
+                >
+                  保存
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
-  );
+  )
 }
