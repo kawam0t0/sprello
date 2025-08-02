@@ -8,6 +8,16 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
@@ -50,22 +60,22 @@ export default function Home() {
       {
         id: "1",
         title: "Aヨミ",
-        cards: [], // テストカードを削除
+        cards: [],
       },
       {
         id: "2",
         title: "Bヨミ",
-        cards: [], // テストカードを削除
+        cards: [],
       },
       {
         id: "3",
         title: "Cヨミ",
-        cards: [], // テストカードを削除
+        cards: [],
       },
       {
         id: "4",
         title: "未確定",
-        cards: [], // テストカードを削除
+        cards: [],
       },
     ],
   })
@@ -81,6 +91,12 @@ export default function Home() {
   const [showAddList, setShowAddList] = useState(false)
   const [draggedCard, setDraggedCard] = useState<CardType | null>(null)
   const [draggedFromList, setDraggedFromList] = useState<string | null>(null)
+  const [dragOverList, setDragOverList] = useState<string | null>(null)
+  const [dragOverCard, setDragOverCard] = useState<string | null>(null)
+
+  // 削除確認ダイアログ用の状態
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+  const [cardToDelete, setCardToDelete] = useState<{ cardId: string; listId: string } | null>(null)
 
   const addCard = (listId: string) => {
     if (!newCardTitle.trim()) return
@@ -157,7 +173,38 @@ export default function Home() {
     e.preventDefault()
   }
 
-  // 新しい関数を追加：リスト内での順序変更
+  const handleListDragOver = (e: React.DragEvent, listId: string) => {
+    e.preventDefault()
+    setDragOverList(listId)
+  }
+
+  const handleListDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    // リストの境界を完全に出た場合のみリセット
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setDragOverList(null)
+    }
+  }
+
+  const handleCardDragOver = (e: React.DragEvent, cardId: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragOverCard(cardId)
+  }
+
+  const handleCardDragLeave = (e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragOverCard(null)
+  }
+
+  const handleDragEnd = () => {
+    setDraggedCard(null)
+    setDraggedFromList(null)
+    setDragOverList(null)
+    setDragOverCard(null)
+  }
+
   const handleCardDrop = (e: React.DragEvent, targetCard: CardType, targetListId: string) => {
     e.preventDefault()
     e.stopPropagation()
@@ -168,16 +215,22 @@ export default function Home() {
       ...prev,
       lists: prev.lists.map((list) => {
         if (list.id === draggedFromList && list.id === targetListId) {
-          // 同じリスト内での順序変更
-          const cards = list.cards.filter((card) => card.id !== draggedCard.id)
+          // 同じリスト内での順序変更 - 入れ替え処理
+          const cards = [...list.cards]
+          const draggedIndex = cards.findIndex((card) => card.id === draggedCard.id)
           const targetIndex = cards.findIndex((card) => card.id === targetCard.id)
-          cards.splice(targetIndex, 0, draggedCard)
+
+          // 2つのカードの位置を入れ替え
+          const temp = cards[draggedIndex]
+          cards[draggedIndex] = cards[targetIndex]
+          cards[targetIndex] = temp
+
           return { ...list, cards }
         } else if (list.id === draggedFromList) {
           // 元のリストからカードを削除
           return { ...list, cards: list.cards.filter((card) => card.id !== draggedCard.id) }
         } else if (list.id === targetListId) {
-          // 新しいリストにカードを追加
+          // 新しいリストにカードを追加（異なるリスト間の移動）
           const cards = [...list.cards]
           const targetIndex = cards.findIndex((card) => card.id === targetCard.id)
           cards.splice(targetIndex, 0, draggedCard)
@@ -187,12 +240,20 @@ export default function Home() {
       }),
     }))
 
-    setDraggedCard(null)
-    setDraggedFromList(null)
+    handleDragEnd()
   }
 
-  const handleDrop = (toListId: string) => {
+  const handleDrop = (e: React.DragEvent, toListId: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+
     if (!draggedCard || !draggedFromList) return
+
+    // 同じリストの場合は何もしない（カードの順序変更は別の関数で処理）
+    if (draggedFromList === toListId) {
+      handleDragEnd()
+      return
+    }
 
     setCurrentBoard((prev) => ({
       ...prev,
@@ -213,14 +274,13 @@ export default function Home() {
       }),
     }))
 
-    setDraggedCard(null)
-    setDraggedFromList(null)
+    handleDragEnd()
   }
 
   const getListColor = (listTitle: string) => {
     switch (listTitle) {
       case "完了":
-        return "bg-red-100" // bg-gray-100 から bg-red-100 に変更
+        return "bg-red-100"
       case "Aヨミ":
         return "bg-green-100"
       case "Bヨミ":
@@ -234,13 +294,33 @@ export default function Home() {
     }
   }
 
-  const deleteCard = (cardId: string, listId: string) => {
+  // 削除確認ダイアログを開く
+  const handleDeleteClick = (cardId: string, listId: string) => {
+    setCardToDelete({ cardId, listId })
+    setDeleteConfirmOpen(true)
+  }
+
+  // 実際の削除処理
+  const confirmDeleteCard = () => {
+    if (!cardToDelete) return
+
     setCurrentBoard((prev) => ({
       ...prev,
       lists: prev.lists.map((list) =>
-        list.id === listId ? { ...list, cards: list.cards.filter((card) => card.id !== cardId) } : list,
+        list.id === cardToDelete.listId
+          ? { ...list, cards: list.cards.filter((card) => card.id !== cardToDelete.cardId) }
+          : list,
       ),
     }))
+
+    setDeleteConfirmOpen(false)
+    setCardToDelete(null)
+  }
+
+  // 削除キャンセル
+  const cancelDelete = () => {
+    setDeleteConfirmOpen(false)
+    setCardToDelete(null)
   }
 
   return (
@@ -268,9 +348,12 @@ export default function Home() {
             {currentBoard.lists.map((list) => (
               <div
                 key={list.id}
-                className={`w-80 min-w-80 sm:w-72 ${getListColor(list.title)} rounded-lg p-3 flex flex-col max-h-full flex-shrink-0`}
-                onDragOver={handleDragOver}
-                onDrop={() => handleDrop(list.id)}
+                className={`w-80 min-w-80 sm:w-72 ${getListColor(list.title)} rounded-lg p-3 flex flex-col max-h-full flex-shrink-0 transition-all duration-200 ${
+                  dragOverList === list.id ? "ring-2 ring-blue-400 ring-opacity-75 shadow-lg scale-105" : ""
+                } ${draggedCard ? "cursor-pointer" : ""}`}
+                onDragOver={(e) => handleListDragOver(e, list.id)}
+                onDragLeave={handleListDragLeave}
+                onDrop={(e) => handleDrop(e, list.id)}
               >
                 <div className="flex items-center justify-between mb-3">
                   <div className="flex items-center gap-2">
@@ -288,11 +371,19 @@ export default function Home() {
                   {list.cards.map((card) => (
                     <Card
                       key={card.id}
-                      className="p-3 bg-white shadow-sm hover:shadow-md cursor-pointer transition-shadow"
+                      className={`p-3 bg-white shadow-sm hover:shadow-md cursor-pointer transition-all duration-200 ${
+                        draggedCard?.id === card.id ? "opacity-50 rotate-2 scale-105" : ""
+                      } ${
+                        dragOverCard === card.id && draggedCard?.id !== card.id
+                          ? "border-2 border-blue-400 border-dashed"
+                          : ""
+                      }`}
                       draggable
                       onDragStart={() => handleDragStart(card, list.id)}
+                      onDragEnd={handleDragEnd}
                       onDoubleClick={() => handleCardDoubleClick(card)}
-                      onDragOver={handleDragOver}
+                      onDragOver={(e) => handleCardDragOver(e, card.id)}
+                      onDragLeave={handleCardDragLeave}
                       onDrop={(e) => handleCardDrop(e, card, list.id)}
                     >
                       <div className="flex items-start justify-between">
@@ -309,7 +400,7 @@ export default function Home() {
                             className="w-3 h-3 text-red-400 cursor-pointer hover:text-red-600"
                             onClick={(e) => {
                               e.stopPropagation()
-                              deleteCard(card.id, list.id)
+                              handleDeleteClick(card.id, list.id)
                             }}
                           />
                         </div>
@@ -362,6 +453,19 @@ export default function Home() {
                       )}
                     </Card>
                   ))}
+                  {/* Empty Drop Zone for lists with no cards */}
+                  {list.cards.length === 0 && draggedCard && (
+                    <div
+                      className={`h-20 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center text-gray-500 transition-all duration-200 ${
+                        dragOverList === list.id ? "border-blue-400 bg-blue-50" : ""
+                      }`}
+                      onDragOver={(e) => handleListDragOver(e, list.id)}
+                      onDragLeave={handleListDragLeave}
+                      onDrop={(e) => handleDrop(e, list.id)}
+                    >
+                      ここにドロップ
+                    </div>
+                  )}
                 </div>
 
                 {/* Add Card */}
@@ -653,6 +757,24 @@ export default function Home() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteConfirmOpen} onOpenChange={setDeleteConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>カードを削除しますか？</AlertDialogTitle>
+            <AlertDialogDescription>
+              この操作は取り消すことができません。カードとその中のすべての情報が完全に削除されます。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={cancelDelete}>キャンセル</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteCard} className="bg-red-600 hover:bg-red-700">
+              削除する
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
