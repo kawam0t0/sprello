@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState } from "react"
 import { Plus, MoreHorizontal, X, Edit, Calendar, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -22,63 +21,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 
-interface CardType {
-  id: string
-  title: string
-  status: string
-  memo: string
-  openDate: string
-  startDate: string
-  candidateUrl: string
-  candidateUrl2: string
-  companyName: string
-  companyUrl: string
-}
-
-interface ListType {
-  id: string
-  title: string
-  cards: CardType[]
-}
-
-interface BoardType {
-  id: string
-  title: string
-  lists: ListType[]
-}
+// Supabase関連のimport
+import { useBoardData } from "@/hooks/use-board-data"
+import { createCard, updateCard, deleteCard, moveCard, swapCards, getCardCount } from "@/lib/database-operations"
+import type { Card as CardType } from "@/types/database"
 
 export default function Home() {
-  const [currentBoard, setCurrentBoard] = useState<BoardType>({
-    id: "1",
-    title: "Sprello",
-    lists: [
-      {
-        id: "0",
-        title: "完了",
-        cards: [],
-      },
-      {
-        id: "1",
-        title: "Aヨミ",
-        cards: [],
-      },
-      {
-        id: "2",
-        title: "Bヨミ",
-        cards: [],
-      },
-      {
-        id: "3",
-        title: "Cヨミ",
-        cards: [],
-      },
-      {
-        id: "4",
-        title: "未確定",
-        cards: [],
-      },
-    ],
-  })
+  // Supabaseからデータを取得
+  const { board, loading, error, refetch } = useBoardData()
 
   const [statusOptions, setStatusOptions] = useState(["見積待ち", "融資待ち", "補助金待ち", "社内稟議待ち"])
   const [newStatusOption, setNewStatusOption] = useState("")
@@ -86,9 +36,7 @@ export default function Home() {
   const [selectedCard, setSelectedCard] = useState<CardType | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [newCardTitle, setNewCardTitle] = useState("")
-  const [newListTitle, setNewListTitle] = useState("")
   const [showAddCard, setShowAddCard] = useState<string | null>(null)
-  const [showAddList, setShowAddList] = useState(false)
   const [draggedCard, setDraggedCard] = useState<CardType | null>(null)
   const [draggedFromList, setDraggedFromList] = useState<string | null>(null)
   const [dragOverList, setDragOverList] = useState<string | null>(null)
@@ -98,47 +46,45 @@ export default function Home() {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
   const [cardToDelete, setCardToDelete] = useState<{ cardId: string; listId: string } | null>(null)
 
-  const addCard = (listId: string) => {
-    if (!newCardTitle.trim()) return
-
-    const newCard: CardType = {
-      id: Date.now().toString(),
-      title: newCardTitle,
-      status: "",
-      memo: "",
-      openDate: "",
-      startDate: "",
-      candidateUrl: "",
-      candidateUrl2: "",
-      companyName: "",
-      companyUrl: "",
-    }
-
-    setCurrentBoard((prev) => ({
-      ...prev,
-      lists: prev.lists.map((list) => (list.id === listId ? { ...list, cards: [...list.cards, newCard] } : list)),
-    }))
-
-    setNewCardTitle("")
-    setShowAddCard(null)
+  // ローディング中の表示
+  if (loading) {
+    return (
+      <div className="h-screen bg-yellow-400 flex items-center justify-center">
+        <div className="text-white text-xl">読み込み中...</div>
+      </div>
+    )
   }
 
-  const addList = () => {
-    if (!newListTitle.trim()) return
+  // エラー時の表示
+  if (error) {
+    return (
+      <div className="h-screen bg-yellow-400 flex items-center justify-center">
+        <div className="text-red-600 text-xl">エラー: {error}</div>
+      </div>
+    )
+  }
 
-    const newList: ListType = {
-      id: Date.now().toString(),
-      title: newListTitle,
-      cards: [],
+  // ボードデータがない場合
+  if (!board) {
+    return (
+      <div className="h-screen bg-yellow-400 flex items-center justify-center">
+        <div className="text-white text-xl">ボードが見つかりません</div>
+      </div>
+    )
+  }
+
+  const addCard = async (listId: string) => {
+    if (!newCardTitle.trim()) return
+
+    try {
+      const cardCount = await getCardCount(listId)
+      await createCard(listId, newCardTitle, cardCount)
+      setNewCardTitle("")
+      setShowAddCard(null)
+      refetch() // データを再取得
+    } catch (error) {
+      console.error("カード作成エラー:", error)
     }
-
-    setCurrentBoard((prev) => ({
-      ...prev,
-      lists: [...prev.lists, newList],
-    }))
-
-    setNewListTitle("")
-    setShowAddList(false)
   }
 
   const addStatusOption = () => {
@@ -149,14 +95,23 @@ export default function Home() {
     setShowAddStatus(false)
   }
 
-  const updateCard = (updatedCard: CardType) => {
-    setCurrentBoard((prev) => ({
-      ...prev,
-      lists: prev.lists.map((list) => ({
-        ...list,
-        cards: list.cards.map((card) => (card.id === updatedCard.id ? updatedCard : card)),
-      })),
-    }))
+  const handleUpdateCard = async (updatedCard: CardType) => {
+    try {
+      await updateCard(updatedCard.id, {
+        title: updatedCard.title,
+        status: updatedCard.status,
+        memo: updatedCard.memo,
+        open_date: updatedCard.open_date,
+        start_date: updatedCard.start_date,
+        candidate_url: updatedCard.candidate_url,
+        candidate_url2: updatedCard.candidate_url2,
+        company_name: updatedCard.company_name,
+        company_url: updatedCard.company_url,
+      })
+      refetch() // データを再取得
+    } catch (error) {
+      console.error("カード更新エラー:", error)
+    }
   }
 
   const handleCardDoubleClick = (card: CardType) => {
@@ -180,7 +135,6 @@ export default function Home() {
 
   const handleListDragLeave = (e: React.DragEvent) => {
     e.preventDefault()
-    // リストの境界を完全に出た場合のみリセット
     if (!e.currentTarget.contains(e.relatedTarget as Node)) {
       setDragOverList(null)
     }
@@ -205,74 +159,46 @@ export default function Home() {
     setDragOverCard(null)
   }
 
-  const handleCardDrop = (e: React.DragEvent, targetCard: CardType, targetListId: string) => {
+  const handleCardDrop = async (e: React.DragEvent, targetCard: CardType, targetListId: string) => {
     e.preventDefault()
     e.stopPropagation()
 
     if (!draggedCard || !draggedFromList) return
 
-    setCurrentBoard((prev) => ({
-      ...prev,
-      lists: prev.lists.map((list) => {
-        if (list.id === draggedFromList && list.id === targetListId) {
-          // 同じリスト内での順序変更 - 入れ替え処理
-          const cards = [...list.cards]
-          const draggedIndex = cards.findIndex((card) => card.id === draggedCard.id)
-          const targetIndex = cards.findIndex((card) => card.id === targetCard.id)
-
-          // 2つのカードの位置を入れ替え
-          const temp = cards[draggedIndex]
-          cards[draggedIndex] = cards[targetIndex]
-          cards[targetIndex] = temp
-
-          return { ...list, cards }
-        } else if (list.id === draggedFromList) {
-          // 元のリストからカードを削除
-          return { ...list, cards: list.cards.filter((card) => card.id !== draggedCard.id) }
-        } else if (list.id === targetListId) {
-          // 新しいリストにカードを追加（異なるリスト間の移動）
-          const cards = [...list.cards]
-          const targetIndex = cards.findIndex((card) => card.id === targetCard.id)
-          cards.splice(targetIndex, 0, draggedCard)
-          return { ...list, cards }
-        }
-        return list
-      }),
-    }))
+    try {
+      if (draggedFromList === targetListId) {
+        // 同じリスト内での順序変更
+        await swapCards(draggedCard.id, targetCard.id)
+      } else {
+        // 異なるリスト間の移動
+        await moveCard(draggedCard.id, targetListId, targetCard.position)
+      }
+      refetch() // データを再取得
+    } catch (error) {
+      console.error("カード移動エラー:", error)
+    }
 
     handleDragEnd()
   }
 
-  const handleDrop = (e: React.DragEvent, toListId: string) => {
+  const handleDrop = async (e: React.DragEvent, toListId: string) => {
     e.preventDefault()
     e.stopPropagation()
 
     if (!draggedCard || !draggedFromList) return
 
-    // 同じリストの場合は何もしない（カードの順序変更は別の関数で処理）
     if (draggedFromList === toListId) {
       handleDragEnd()
       return
     }
 
-    setCurrentBoard((prev) => ({
-      ...prev,
-      lists: prev.lists.map((list) => {
-        if (list.id === draggedFromList) {
-          return {
-            ...list,
-            cards: list.cards.filter((card) => card.id !== draggedCard.id),
-          }
-        }
-        if (list.id === toListId) {
-          return {
-            ...list,
-            cards: [...list.cards, draggedCard],
-          }
-        }
-        return list
-      }),
-    }))
+    try {
+      const cardCount = await getCardCount(toListId)
+      await moveCard(draggedCard.id, toListId, cardCount)
+      refetch() // データを再取得
+    } catch (error) {
+      console.error("カード移動エラー:", error)
+    }
 
     handleDragEnd()
   }
@@ -294,30 +220,25 @@ export default function Home() {
     }
   }
 
-  // 削除確認ダイアログを開く
   const handleDeleteClick = (cardId: string, listId: string) => {
     setCardToDelete({ cardId, listId })
     setDeleteConfirmOpen(true)
   }
 
-  // 実際の削除処理
-  const confirmDeleteCard = () => {
+  const confirmDeleteCard = async () => {
     if (!cardToDelete) return
 
-    setCurrentBoard((prev) => ({
-      ...prev,
-      lists: prev.lists.map((list) =>
-        list.id === cardToDelete.listId
-          ? { ...list, cards: list.cards.filter((card) => card.id !== cardToDelete.cardId) }
-          : list,
-      ),
-    }))
+    try {
+      await deleteCard(cardToDelete.cardId)
+      refetch() // データを再取得
+    } catch (error) {
+      console.error("カード削除エラー:", error)
+    }
 
     setDeleteConfirmOpen(false)
     setCardToDelete(null)
   }
 
-  // 削除キャンセル
   const cancelDelete = () => {
     setDeleteConfirmOpen(false)
     setCardToDelete(null)
@@ -330,14 +251,11 @@ export default function Home() {
         {/* Header */}
         <div className="bg-yellow-500 text-white p-4">
           <div className="flex items-center justify-between">
-            {/* Logo and Title */}
             <div className="flex items-center gap-3">
               <img src="/images/sprello-logo.png" alt="Sprello Logo" width={40} height={40} className="rounded-lg" />
-              <h1 className="text-2xl font-bold">{currentBoard.title}</h1>
+              <h1 className="text-2xl font-bold">{board.title}</h1>
             </div>
-
-            {/* Right side - can be used for user menu, settings, etc. */}
-            <div className="flex items-center gap-2">{/* Placeholder for future features */}</div>
+            <div className="flex items-center gap-2"></div>
           </div>
         </div>
 
@@ -345,7 +263,7 @@ export default function Home() {
         <div className="flex-1 p-2 sm:p-4 overflow-x-auto">
           <div className="flex gap-2 sm:gap-4 h-full">
             {/* Lists */}
-            {currentBoard.lists.map((list) => (
+            {board.lists.map((list) => (
               <div
                 key={list.id}
                 className={`w-80 min-w-80 sm:w-72 ${getListColor(list.title)} rounded-lg p-3 flex flex-col max-h-full flex-shrink-0 transition-all duration-200 ${
@@ -415,11 +333,11 @@ export default function Home() {
                             </span>
                           </div>
                         )}
-                        {card.openDate && (
+                        {card.open_date && (
                           <div>
                             <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">
                               OPEN:{" "}
-                              {new Date(card.openDate).toLocaleDateString("ja-JP", {
+                              {new Date(card.open_date).toLocaleDateString("ja-JP", {
                                 year: "numeric",
                                 month: "numeric",
                                 day: "numeric",
@@ -428,11 +346,11 @@ export default function Home() {
                             </span>
                           </div>
                         )}
-                        {card.startDate && (
+                        {card.start_date && (
                           <div>
                             <span className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full">
                               着工:{" "}
-                              {new Date(card.startDate).toLocaleDateString("ja-JP", {
+                              {new Date(card.start_date).toLocaleDateString("ja-JP", {
                                 year: "numeric",
                                 month: "numeric",
                                 day: "numeric",
@@ -444,10 +362,10 @@ export default function Home() {
                       </div>
 
                       {/* Company Name if available */}
-                      {card.companyName && (
+                      {card.company_name && (
                         <div className="mt-1">
                           <span className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full">
-                            {card.companyName}
+                            {card.company_name}
                           </span>
                         </div>
                       )}
@@ -519,52 +437,6 @@ export default function Home() {
                 </div>
               </div>
             ))}
-
-            {/* Add List */}
-            <div className="w-80 min-w-80 flex-shrink-0">
-              {showAddList ? (
-                <div className="bg-gray-100 rounded-lg p-3">
-                  <Input
-                    placeholder="リストのタイトルを入力..."
-                    value={newListTitle}
-                    onChange={(e) => setNewListTitle(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        addList()
-                      } else if (e.key === "Escape") {
-                        setShowAddList(false)
-                        setNewListTitle("")
-                      }
-                    }}
-                    autoFocus
-                  />
-                  <div className="flex gap-2 mt-2">
-                    <Button size="sm" onClick={addList} className="bg-yellow-500 hover:bg-yellow-600">
-                      リストを追加
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setShowAddList(false)
-                        setNewListTitle("")
-                      }}
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start bg-white/20 text-white hover:bg-white/30 h-auto p-3"
-                  onClick={() => setShowAddList(true)}
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  リストを追加
-                </Button>
-              )}
-            </div>
           </div>
         </div>
       </div>
@@ -665,8 +537,8 @@ export default function Home() {
                     <Input
                       id="openDate"
                       type="date"
-                      value={selectedCard.openDate}
-                      onChange={(e) => setSelectedCard({ ...selectedCard, openDate: e.target.value })}
+                      value={selectedCard.open_date || ""}
+                      onChange={(e) => setSelectedCard({ ...selectedCard, open_date: e.target.value || null })}
                     />
                     <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                   </div>
@@ -677,8 +549,8 @@ export default function Home() {
                     <Input
                       id="startDate"
                       type="date"
-                      value={selectedCard.startDate}
-                      onChange={(e) => setSelectedCard({ ...selectedCard, startDate: e.target.value })}
+                      value={selectedCard.start_date || ""}
+                      onChange={(e) => setSelectedCard({ ...selectedCard, start_date: e.target.value || null })}
                     />
                     <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                   </div>
@@ -694,8 +566,8 @@ export default function Home() {
                     <Input
                       id="companyName"
                       placeholder="株式会社○○"
-                      value={selectedCard.companyName}
-                      onChange={(e) => setSelectedCard({ ...selectedCard, companyName: e.target.value })}
+                      value={selectedCard.company_name}
+                      onChange={(e) => setSelectedCard({ ...selectedCard, company_name: e.target.value })}
                     />
                   </div>
                   <div>
@@ -704,8 +576,8 @@ export default function Home() {
                       id="companyUrl"
                       type="url"
                       placeholder="https://company.example.com"
-                      value={selectedCard.companyUrl}
-                      onChange={(e) => setSelectedCard({ ...selectedCard, companyUrl: e.target.value })}
+                      value={selectedCard.company_url}
+                      onChange={(e) => setSelectedCard({ ...selectedCard, company_url: e.target.value })}
                     />
                   </div>
                 </div>
@@ -721,8 +593,8 @@ export default function Home() {
                       id="candidateUrl"
                       type="url"
                       placeholder="https://example.com"
-                      value={selectedCard.candidateUrl}
-                      onChange={(e) => setSelectedCard({ ...selectedCard, candidateUrl: e.target.value })}
+                      value={selectedCard.candidate_url}
+                      onChange={(e) => setSelectedCard({ ...selectedCard, candidate_url: e.target.value })}
                     />
                   </div>
                   <div>
@@ -731,8 +603,8 @@ export default function Home() {
                       id="candidateUrl2"
                       type="url"
                       placeholder="https://example.com"
-                      value={selectedCard.candidateUrl2}
-                      onChange={(e) => setSelectedCard({ ...selectedCard, candidateUrl2: e.target.value })}
+                      value={selectedCard.candidate_url2}
+                      onChange={(e) => setSelectedCard({ ...selectedCard, candidate_url2: e.target.value })}
                     />
                   </div>
                 </div>
@@ -745,7 +617,7 @@ export default function Home() {
                 </Button>
                 <Button
                   onClick={() => {
-                    updateCard(selectedCard)
+                    handleUpdateCard(selectedCard)
                     setDialogOpen(false)
                   }}
                   className="bg-yellow-500 hover:bg-yellow-600"
