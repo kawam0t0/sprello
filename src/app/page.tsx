@@ -157,6 +157,40 @@ export default function Home() {
     e.preventDefault()
   }
 
+  // 新しい関数を追加：リスト内での順序変更
+  const handleCardDrop = (e: React.DragEvent, targetCard: CardType, targetListId: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+
+    if (!draggedCard || !draggedFromList) return
+
+    setCurrentBoard((prev) => ({
+      ...prev,
+      lists: prev.lists.map((list) => {
+        if (list.id === draggedFromList && list.id === targetListId) {
+          // 同じリスト内での順序変更
+          const cards = list.cards.filter((card) => card.id !== draggedCard.id)
+          const targetIndex = cards.findIndex((card) => card.id === targetCard.id)
+          cards.splice(targetIndex, 0, draggedCard)
+          return { ...list, cards }
+        } else if (list.id === draggedFromList) {
+          // 元のリストからカードを削除
+          return { ...list, cards: list.cards.filter((card) => card.id !== draggedCard.id) }
+        } else if (list.id === targetListId) {
+          // 新しいリストにカードを追加
+          const cards = [...list.cards]
+          const targetIndex = cards.findIndex((card) => card.id === targetCard.id)
+          cards.splice(targetIndex, 0, draggedCard)
+          return { ...list, cards }
+        }
+        return list
+      }),
+    }))
+
+    setDraggedCard(null)
+    setDraggedFromList(null)
+  }
+
   const handleDrop = (toListId: string) => {
     if (!draggedCard || !draggedFromList) return
 
@@ -229,7 +263,7 @@ export default function Home() {
 
         {/* Board Content */}
         <div className="flex-1 p-2 sm:p-4 overflow-x-auto">
-          <div className="flex gap-2 sm:gap-4 h-full justify-center">
+          <div className="flex gap-2 sm:gap-4 h-full">
             {/* Lists */}
             {currentBoard.lists.map((list) => (
               <div
@@ -258,6 +292,8 @@ export default function Home() {
                       draggable
                       onDragStart={() => handleDragStart(card, list.id)}
                       onDoubleClick={() => handleCardDoubleClick(card)}
+                      onDragOver={handleDragOver}
+                      onDrop={(e) => handleCardDrop(e, card, list.id)}
                     >
                       <div className="flex items-start justify-between">
                         <p className="text-sm text-gray-800 flex-1">{card.title}</p>
