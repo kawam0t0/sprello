@@ -25,12 +25,8 @@ import { Label } from "@/components/ui/label"
 import { useBoardData } from "@/hooks/use-board-data"
 import { createCard, updateCard, deleteCard, moveCard, swapCards, getCardCount } from "@/lib/database-operations"
 import type { Card as CardType } from "@/types/database"
-import { DebugPanel } from "@/components/debug-panel"
 
 export default function Home() {
-  // デバッグモード（開発時のみ表示）
-  const [showDebug, setShowDebug] = useState(false)
-
   // Supabaseからデータを取得
   const { board, loading, error, refetch } = useBoardData()
 
@@ -55,10 +51,6 @@ export default function Home() {
     return (
       <div className="h-screen bg-yellow-400 flex flex-col items-center justify-center">
         <div className="text-white text-xl mb-4">読み込み中...</div>
-        <Button onClick={() => setShowDebug(!showDebug)} variant="outline">
-          デバッグ情報を{showDebug ? "非表示" : "表示"}
-        </Button>
-        {showDebug && <DebugPanel />}
       </div>
     )
   }
@@ -68,10 +60,6 @@ export default function Home() {
     return (
       <div className="h-screen bg-yellow-400 flex flex-col items-center justify-center">
         <div className="text-red-600 text-xl mb-4">エラー: {error}</div>
-        <Button onClick={() => setShowDebug(!showDebug)} variant="outline" className="mb-4">
-          デバッグ情報を{showDebug ? "非表示" : "表示"}
-        </Button>
-        {showDebug && <DebugPanel />}
         <Button onClick={refetch} className="bg-yellow-500 hover:bg-yellow-600">
           再試行
         </Button>
@@ -84,10 +72,6 @@ export default function Home() {
     return (
       <div className="h-screen bg-yellow-400 flex flex-col items-center justify-center">
         <div className="text-white text-xl mb-4">ボードが見つかりません</div>
-        <Button onClick={() => setShowDebug(!showDebug)} variant="outline" className="mb-4">
-          デバッグ情報を{showDebug ? "非表示" : "表示"}
-        </Button>
-        {showDebug && <DebugPanel />}
         <Button onClick={refetch} className="bg-yellow-500 hover:bg-yellow-600">
           再試行
         </Button>
@@ -280,16 +264,6 @@ export default function Home() {
 
   return (
     <div className="h-screen bg-yellow-400 flex flex-col">
-      {/* Debug Panel Toggle */}
-      <div className="absolute top-2 right-2 z-50">
-        <Button onClick={() => setShowDebug(!showDebug)} variant="outline" size="sm" className="bg-white/80">
-          🔧
-        </Button>
-      </div>
-
-      {/* Debug Panel */}
-      {showDebug && <DebugPanel />}
-
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
