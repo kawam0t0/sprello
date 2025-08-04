@@ -263,7 +263,7 @@ export default function Home() {
   }
 
   return (
-    <div className="h-screen bg-yellow-400 flex flex-col">
+    <div className="min-h-screen bg-yellow-400 flex flex-col">
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
@@ -280,13 +280,13 @@ export default function Home() {
         </div>
 
         {/* Board Content */}
-        <div className="flex-1 p-2 sm:p-4 overflow-x-auto">
-          <div className="flex gap-2 sm:gap-4 h-full">
+        <div className="flex-1 p-2 sm:p-4 overflow-x-auto min-h-0">
+          <div className="flex gap-2 sm:gap-4 min-h-full">
             {/* Lists */}
             {board.lists.map((list) => (
               <div
                 key={list.id}
-                className={`w-80 min-w-80 sm:w-72 ${getListColor(list.title)} rounded-lg p-3 flex flex-col max-h-full flex-shrink-0 transition-all duration-200 ${
+                className={`w-80 min-w-80 sm:w-72 ${getListColor(list.title)} rounded-lg p-3 flex flex-col flex-shrink-0 transition-all duration-200 ${
                   dragOverList === list.id ? "ring-2 ring-blue-400 ring-opacity-75 shadow-lg scale-105" : ""
                 } ${draggedCard ? "cursor-pointer" : ""}`}
                 onDragOver={(e) => handleListDragOver(e, list.id)}
@@ -305,7 +305,7 @@ export default function Home() {
                   </Button>
                 </div>
 
-                <div className="flex-1 space-y-2 overflow-y-auto">
+                <div className="flex-1 space-y-2 overflow-y-visible">
                   {list.cards.map((card) => (
                     <Card
                       key={card.id}
