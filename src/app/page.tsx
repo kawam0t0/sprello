@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useState } from "react"
-import { Plus, MoreHorizontal, X, Edit, Calendar, Trash2 } from "lucide-react"
+import { Plus, MoreHorizontal, X, Edit, Calendar, Trash2, ExternalLink } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
@@ -25,8 +25,12 @@ import { Label } from "@/components/ui/label"
 import { useBoardData } from "@/hooks/use-board-data"
 import { createCard, updateCard, deleteCard, moveCard, swapCards, getCardCount } from "@/lib/database-operations"
 import type { Card as CardType } from "@/types/database"
+import { DebugPanel } from "@/components/debug-panel"
 
 export default function Home() {
+  // デバッグモード（開発時のみ表示）
+  const [showDebug, setShowDebug] = useState(false)
+
   // Supabaseからデータを取得
   const { board, loading, error, refetch } = useBoardData()
 
@@ -49,8 +53,12 @@ export default function Home() {
   // ローディング中の表示
   if (loading) {
     return (
-      <div className="h-screen bg-yellow-400 flex items-center justify-center">
-        <div className="text-white text-xl">読み込み中...</div>
+      <div className="h-screen bg-yellow-400 flex flex-col items-center justify-center">
+        <div className="text-white text-xl mb-4">読み込み中...</div>
+        <Button onClick={() => setShowDebug(!showDebug)} variant="outline">
+          デバッグ情報を{showDebug ? "非表示" : "表示"}
+        </Button>
+        {showDebug && <DebugPanel />}
       </div>
     )
   }
@@ -58,8 +66,15 @@ export default function Home() {
   // エラー時の表示
   if (error) {
     return (
-      <div className="h-screen bg-yellow-400 flex items-center justify-center">
-        <div className="text-red-600 text-xl">エラー: {error}</div>
+      <div className="h-screen bg-yellow-400 flex flex-col items-center justify-center">
+        <div className="text-red-600 text-xl mb-4">エラー: {error}</div>
+        <Button onClick={() => setShowDebug(!showDebug)} variant="outline" className="mb-4">
+          デバッグ情報を{showDebug ? "非表示" : "表示"}
+        </Button>
+        {showDebug && <DebugPanel />}
+        <Button onClick={refetch} className="bg-yellow-500 hover:bg-yellow-600">
+          再試行
+        </Button>
       </div>
     )
   }
@@ -67,8 +82,15 @@ export default function Home() {
   // ボードデータがない場合
   if (!board) {
     return (
-      <div className="h-screen bg-yellow-400 flex items-center justify-center">
-        <div className="text-white text-xl">ボードが見つかりません</div>
+      <div className="h-screen bg-yellow-400 flex flex-col items-center justify-center">
+        <div className="text-white text-xl mb-4">ボードが見つかりません</div>
+        <Button onClick={() => setShowDebug(!showDebug)} variant="outline" className="mb-4">
+          デバッグ情報を{showDebug ? "非表示" : "表示"}
+        </Button>
+        {showDebug && <DebugPanel />}
+        <Button onClick={refetch} className="bg-yellow-500 hover:bg-yellow-600">
+          再試行
+        </Button>
       </div>
     )
   }
@@ -77,13 +99,19 @@ export default function Home() {
     if (!newCardTitle.trim()) return
 
     try {
+      console.log("カード作成開始:", { listId, title: newCardTitle })
       const cardCount = await getCardCount(listId)
-      await createCard(listId, newCardTitle, cardCount)
+      console.log("現在のカード数:", cardCount)
+
+      const newCard = await createCard(listId, newCardTitle, cardCount)
+      console.log("カード作成成功:", newCard)
+
       setNewCardTitle("")
       setShowAddCard(null)
       refetch() // データを再取得
     } catch (error) {
       console.error("カード作成エラー:", error)
+      alert("カードの作成に失敗しました: " + (error instanceof Error ? error.message : "不明なエラー"))
     }
   }
 
@@ -97,6 +125,7 @@ export default function Home() {
 
   const handleUpdateCard = async (updatedCard: CardType) => {
     try {
+      console.log("カード更新開始:", updatedCard)
       await updateCard(updatedCard.id, {
         title: updatedCard.title,
         status: updatedCard.status,
@@ -108,9 +137,11 @@ export default function Home() {
         company_name: updatedCard.company_name,
         company_url: updatedCard.company_url,
       })
+      console.log("カード更新成功")
       refetch() // データを再取得
     } catch (error) {
       console.error("カード更新エラー:", error)
+      alert("カードの更新に失敗しました: " + (error instanceof Error ? error.message : "不明なエラー"))
     }
   }
 
@@ -229,10 +260,13 @@ export default function Home() {
     if (!cardToDelete) return
 
     try {
+      console.log("カード削除開始:", cardToDelete.cardId)
       await deleteCard(cardToDelete.cardId)
+      console.log("カード削除成功")
       refetch() // データを再取得
     } catch (error) {
       console.error("カード削除エラー:", error)
+      alert("カードの削除に失敗しました: " + (error instanceof Error ? error.message : "不明なエラー"))
     }
 
     setDeleteConfirmOpen(false)
@@ -246,6 +280,16 @@ export default function Home() {
 
   return (
     <div className="h-screen bg-yellow-400 flex flex-col">
+      {/* Debug Panel Toggle */}
+      <div className="absolute top-2 right-2 z-50">
+        <Button onClick={() => setShowDebug(!showDebug)} variant="outline" size="sm" className="bg-white/80">
+          🔧
+        </Button>
+      </div>
+
+      {/* Debug Panel */}
+      {showDebug && <DebugPanel />}
+
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
@@ -255,7 +299,9 @@ export default function Home() {
               <img src="/images/sprello-logo.png" alt="Sprello Logo" width={40} height={40} className="rounded-lg" />
               <h1 className="text-2xl font-bold">{board.title}</h1>
             </div>
-            <div className="flex items-center gap-2"></div>
+            <div className="flex items-center gap-2">
+              <span className="text-sm">リスト数: {board.lists.length}</span>
+            </div>
           </div>
         </div>
 
@@ -367,6 +413,50 @@ export default function Home() {
                           <span className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full">
                             {card.company_name}
                           </span>
+                        </div>
+                      )}
+                      {/* URL Links if available */}
+                      {(card.candidate_url || card.candidate_url2 || card.company_url) && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {card.company_url && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                window.open(card.company_url, '_blank', 'noopener,noreferrer')
+                              }}
+                              className="bg-indigo-100 text-indigo-800 text-xs px-2 py-1 rounded-full hover:bg-indigo-200 transition-colors flex items-center gap-1"
+                              title="企業サイトを開く"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              企業
+                            </button>
+                          )}
+                          {card.candidate_url && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                window.open(card.candidate_url, '_blank', 'noopener,noreferrer')
+                              }}
+                              className="bg-teal-100 text-teal-800 text-xs px-2 py-1 rounded-full hover:bg-teal-200 transition-colors flex items-center gap-1"
+                              title="候補地1を開く"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              候補地1
+                            </button>
+                          )}
+                          {card.candidate_url2 && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                window.open(card.candidate_url2, '_blank', 'noopener,noreferrer')
+                              }}
+                              className="bg-cyan-100 text-cyan-800 text-xs px-2 py-1 rounded-full hover:bg-cyan-200 transition-colors flex items-center gap-1"
+                              title="候補地2を開く"
+                            >
+                              <ExternalLink className="w-3 h-3" />
+                              候補地2
+                            </button>
+                          )}
                         </div>
                       )}
                     </Card>
@@ -579,6 +669,19 @@ export default function Home() {
                       value={selectedCard.company_url}
                       onChange={(e) => setSelectedCard({ ...selectedCard, company_url: e.target.value })}
                     />
+                    {/* 企業URLの下に */}
+                    {selectedCard.company_url && (
+                      <div className="mt-1">
+                        <button
+                          type="button"
+                          onClick={() => window.open(selectedCard.company_url, '_blank', 'noopener,noreferrer')}
+                          className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          企業サイトを開く
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -596,6 +699,19 @@ export default function Home() {
                       value={selectedCard.candidate_url}
                       onChange={(e) => setSelectedCard({ ...selectedCard, candidate_url: e.target.value })}
                     />
+                    {/* 候補地URL 1の下に */}
+                    {selectedCard.candidate_url && (
+                      <div className="mt-1">
+                        <button
+                          type="button"
+                          onClick={() => window.open(selectedCard.candidate_url, '_blank', 'noopener,noreferrer')}
+                          className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          リンクを開く
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div>
                     <Label htmlFor="candidateUrl2">候補地URL 2</Label>
@@ -606,6 +722,19 @@ export default function Home() {
                       value={selectedCard.candidate_url2}
                       onChange={(e) => setSelectedCard({ ...selectedCard, candidate_url2: e.target.value })}
                     />
+                    {/* 候補地URL 2の下に */}
+                    {selectedCard.candidate_url2 && (
+                      <div className="mt-1">
+                        <button
+                          type="button"
+                          onClick={() => window.open(selectedCard.candidate_url2, '_blank', 'noopener,noreferrer')}
+                          className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          リンクを開く
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
