@@ -43,6 +43,7 @@ export function TimelineView({ board }: TimelineViewProps) {
   } | null>(null)
   const [newDate, setNewDate] = useState("")
   const [isUpdating, setIsUpdating] = useState(false)
+  const [yomiFilter, setYomiFilter] = useState<string>("all")
 
   const timelineItems = useMemo(() => {
     const items: TimelineItem[] = []
@@ -139,6 +140,30 @@ export function TimelineView({ board }: TimelineViewProps) {
     })
   }, [board])
 
+  // ヨミ（リスト名）ごとのフィルタ用の一覧と件数を作成
+  const yomiOptions = useMemo(() => {
+    const order = ["Aヨミ", "Bヨミ", "Cヨミ", "未確定", "完了"]
+    const counts = new Map<string, number>()
+    timelineItems.forEach((item) => {
+      counts.set(item.listTitle, (counts.get(item.listTitle) || 0) + 1)
+    })
+    const present = Array.from(counts.keys())
+    present.sort((a, b) => {
+      const ai = order.indexOf(a)
+      const bi = order.indexOf(b)
+      if (ai === -1 && bi === -1) return a.localeCompare(b, "ja")
+      if (ai === -1) return 1
+      if (bi === -1) return -1
+      return ai - bi
+    })
+    return present.map((title) => ({ title, count: counts.get(title) || 0 }))
+  }, [timelineItems])
+
+  const filteredItems = useMemo(() => {
+    if (yomiFilter === "all") return timelineItems
+    return timelineItems.filter((item) => item.listTitle === yomiFilter)
+  }, [timelineItems, yomiFilter])
+
   const dateRange = useMemo(() => {
     if (timelineItems.length === 0) return { start: new Date(), end: new Date(), months: [] }
 
@@ -203,6 +228,26 @@ export function TimelineView({ board }: TimelineViewProps) {
     return endPos - startPos
   }
 
+  const getYomiButtonClass = (title: string, isActive: boolean) => {
+    if (!isActive) {
+      return "bg-white text-gray-600 border border-gray-300 hover:bg-gray-50"
+    }
+    switch (title) {
+      case "Aヨミ":
+        return "bg-green-500 text-white border border-green-500 shadow-sm"
+      case "Bヨミ":
+        return "bg-blue-500 text-white border border-blue-500 shadow-sm"
+      case "Cヨミ":
+        return "bg-orange-500 text-white border border-orange-500 shadow-sm"
+      case "完了":
+        return "bg-red-500 text-white border border-red-500 shadow-sm"
+      case "未確定":
+        return "bg-gray-500 text-white border border-gray-500 shadow-sm"
+      default:
+        return "bg-teal-500 text-white border border-teal-500 shadow-sm"
+    }
+  }
+
   const handleBarClick = (cardId: string, cardTitle: string, type: 'start' | 'open', currentDate: string) => {
     setEditingDate({ cardId, cardTitle, type, currentDate })
     setNewDate(currentDate)
@@ -240,6 +285,30 @@ export function TimelineView({ board }: TimelineViewProps) {
 
   return (
     <>
+      {yomiOptions.length > 0 && (
+        <div className="bg-white px-6 pt-6">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-sm font-bold text-gray-700 mr-1">ヨミで絞り込み:</span>
+            <button
+              onClick={() => setYomiFilter("all")}
+              className={`text-sm px-3 py-1.5 rounded-full font-medium transition-colors ${getYomiButtonClass("__all__", yomiFilter === "all")}`}
+            >
+              全て
+              <span className="ml-1 text-xs opacity-80">({timelineItems.length})</span>
+            </button>
+            {yomiOptions.map((opt) => (
+              <button
+                key={opt.title}
+                onClick={() => setYomiFilter(opt.title)}
+                className={`text-sm px-3 py-1.5 rounded-full font-medium transition-colors ${getYomiButtonClass(opt.title, yomiFilter === opt.title)}`}
+              >
+                {opt.title}
+                <span className="ml-1 text-xs opacity-80">({opt.count})</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="overflow-x-auto bg-white">
         <div className="min-w-[1200px] p-6">
           <div className="flex mb-6">
@@ -260,9 +329,14 @@ export function TimelineView({ board }: TimelineViewProps) {
             </div>
           </div>
 
+          {filteredItems.length === 0 ? (
+            <div className="flex items-center justify-center h-32 text-gray-500 border border-dashed border-gray-300 rounded-lg">
+              <p className="text-sm">「{yomiFilter}」のプロジェクトはありません</p>
+            </div>
+          ) : (
           <div className="space-y-4">
-            {timelineItems.map((item, idx) => {
-              
+            {filteredItems.map((item, idx) => {
+
               return (
                 <div key={idx} className="flex items-stretch">
                   <div className="w-72 flex-shrink-0 pr-4">
@@ -389,6 +463,7 @@ export function TimelineView({ board }: TimelineViewProps) {
               )
             })}
           </div>
+          )}
 
           <div className="mt-8 p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg border border-gray-200">
             <div className="flex gap-8 justify-center items-center text-sm">
