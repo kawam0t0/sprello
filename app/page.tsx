@@ -645,7 +645,7 @@ export default function Home() {
             <TimelineView board={board} />
           </div>
         ) : (
-          <div className="flex-1 min-h-0 bg-white">
+          <div className="bg-white" style={{ height: "calc(100vh - 72px)" }}>
             <MapView cards={board.lists.flatMap((l) => l.cards)} />
           </div>
         )}
