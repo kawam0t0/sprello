@@ -54,11 +54,31 @@ export async function createCard(listId: string, title: string, position: number
   return data as Card
 }
 
-// 住所から緯度経度を取得（サーバーAPI経由。失敗しても null を返す）
+// 住所から緯度経度を取得。
+// まずブラウザ側（地図と同じリファラー許可済みキー）で変換し、
+// 失敗したときだけサーバーAPIにフォールバックする。失敗しても null を返す。
 export async function geocodeAddress(
   address: string,
 ): Promise<{ lat: number | null; lng: number | null }> {
   if (!address?.trim()) return { lat: null, lng: null }
+
+  // 1) ブラウザ側のGeocoder（追加キー不要）
+  if (typeof window !== "undefined") {
+    try {
+      const { loadGoogleMaps } = await import("./google-maps-loader")
+      const g = await loadGoogleMaps()
+      const geocoder = new g.maps.Geocoder()
+      const result = await geocoder.geocode({ address, region: "jp" })
+      const loc = result?.results?.[0]?.geometry?.location
+      if (loc) {
+        return { lat: loc.lat(), lng: loc.lng() }
+      }
+    } catch (e) {
+      console.warn("[geocode] client-side失敗、サーバーにフォールバック:", e)
+    }
+  }
+
+  // 2) サーバーAPIフォールバック（GOOGLE_MAPS_API_KEY使用）
   try {
     const res = await fetch("/api/geocode", {
       method: "POST",
