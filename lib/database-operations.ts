@@ -11,6 +11,15 @@ export async function getStores(): Promise<Store[]> {
   return (data as Store[]) ?? []
 }
 
+// 自社店舗を更新
+export async function updateStore(id: string, updates: Partial<Store>): Promise<void> {
+  const { error } = await supabase
+    .from("stores")
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq("id", id)
+  if (error) throw error
+}
+
 async function createTrelloListForCard(projectName: string, cardData: any) {
   try {
     console.log("[v0] Creating Trello list for:", projectName)

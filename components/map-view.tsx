@@ -1,11 +1,12 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { X } from "lucide-react"
+import { X, Pencil } from "lucide-react"
 import { APIProvider, Map, useMap } from "@vis.gl/react-google-maps"
 import { CATEGORY_COLORS, PROJECT_CATEGORIES, normalizeCategory } from "@/types/database"
 import type { Card, MapItem, ProjectCategory, Store } from "@/types/database"
-import { getStores } from "@/lib/database-operations"
+import { getStores, updateStore } from "@/lib/database-operations"
+import { StoreForm } from "@/components/store-form"
 
 const DEFAULT_CENTER = { lat: 36.3912, lng: 139.0608 }
 const RADII: { km: number; label: string }[] = [
@@ -18,14 +19,13 @@ interface MapViewProps {
   cards: Card[]
 }
 
-// Card / Store を地図共通アイテムに変換
 function storeToItem(s: Store): MapItem | null {
   if (typeof s.latitude !== "number" || typeof s.longitude !== "number") return null
   return {
     id: `store-${s.id}`,
     kind: "store",
     name: s.store_name,
-    category: "スプラッシュンゴー",
+    category: normalizeCategory(s.category),
     lat: s.latitude,
     lng: s.longitude,
     address: s.address,
@@ -88,9 +88,9 @@ function cardToItem(c: Card): MapItem | null {
 export function MapView({ cards }: MapViewProps) {
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
   const [stores, setStores] = useState<Store[]>([])
-
+  const refreshStores = () => getStores().then(setStores)
   useEffect(() => {
-    getStores().then(setStores)
+    refreshStores()
   }, [])
 
   const [visibleCats, setVisibleCats] = useState<Record<ProjectCategory, boolean>>({
@@ -101,6 +101,10 @@ export function MapView({ cards }: MapViewProps) {
   const [activeRadii, setActiveRadii] = useState<Record<number, boolean>>({ 1: false, 2: true, 5: false })
   const [circleAll, setCircleAll] = useState(false)
   const [selected, setSelected] = useState<MapItem | null>(null)
+
+  // 店舗編集
+  const [editStore, setEditStore] = useState<Store | null>(null)
+  const [saving, setSaving] = useState(false)
 
   const allItems = useMemo(() => {
     const s = stores.map(storeToItem).filter(Boolean) as MapItem[]
@@ -127,6 +131,28 @@ export function MapView({ cards }: MapViewProps) {
 
   const enabledRadii = RADII.filter((r) => activeRadii[r.km]).map((r) => r.km)
 
+  const handleEditFromPanel = () => {
+    if (selected?.kind !== "store") return
+    const realId = selected.id.replace("store-", "")
+    const s = stores.find((x) => x.id === realId) ?? null
+    setEditStore(s)
+  }
+
+  const handleSaveStore = async (id: string, patch: Partial<Store>) => {
+    try {
+      setSaving(true)
+      await updateStore(id, patch)
+      await refreshStores()
+      setEditStore(null)
+      // サイドパネルの表示も更新
+      setSelected(null)
+    } catch (e) {
+      alert("保存に失敗しました: " + (e instanceof Error ? e.message : "不明なエラー"))
+    } finally {
+      setSaving(false)
+    }
+  }
+
   return (
     <div className="h-full flex">
       {/* 左：フィルタパネル */}
@@ -143,10 +169,7 @@ export function MapView({ cards }: MapViewProps) {
                     checked={visibleCats[cat]}
                     onChange={(e) => setVisibleCats((p) => ({ ...p, [cat]: e.target.checked }))}
                   />
-                  <span
-                    className="inline-block w-3 h-3 rounded-full"
-                    style={{ backgroundColor: CATEGORY_COLORS[cat] }}
-                  />
+                  <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: CATEGORY_COLORS[cat] }} />
                   <span className="flex-1">{cat}</span>
                   <span className="text-gray-400 text-xs">{count}</span>
                 </label>
@@ -206,14 +229,56 @@ export function MapView({ cards }: MapViewProps) {
           </Map>
         </APIProvider>
 
-        {/* ArmBox風サイドパネル */}
-        {selected && <DetailPanel item={selected} onClose={() => setSelected(null)} />}
+        {selected && (
+          <DetailPanel
+            item={selected}
+            onClose={() => setSelected(null)}
+            onEdit={selected.kind === "store" ? handleEditFromPanel : undefined}
+          />
+        )}
       </div>
+
+      <StoreForm
+        store={editStore}
+        open={!!editStore}
+        onOpenChange={(o) => !o && setEditStore(null)}
+        onSubmit={handleSaveStore}
+        submitting={saving}
+      />
     </div>
   )
 }
 
-// 地図上のマーカー・同心円を命令的に管理
+// ---- 見やすいラベル付きピン ----
+function shortName(name: string): string {
+  const n = name.replace(/SPLASH'N'GO!/gi, "").replace(/スプラッシュンゴー/g, "").trim() || name
+  return n.length > 12 ? n.slice(0, 12) + "…" : n
+}
+
+function escapeXml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+}
+
+function buildPin(label: string, color: string, selected: boolean): { url: string; w: number; h: number } {
+  // 日本語は幅が広いので1文字あたり13px程度で見積もり
+  const textW = Math.max(label.length * 13, 20)
+  const w = Math.ceil(30 + textW + 12)
+  const h = 40
+  const stroke = selected ? "#111827" : color
+  const sw = selected ? 3 : 1.5
+  const cx = w / 2
+  const svg =
+    `<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${h}' viewBox='0 0 ${w} ${h}'>` +
+    `<rect x='1.5' y='1.5' rx='14' ry='14' width='${w - 3}' height='28' fill='white' stroke='${stroke}' stroke-width='${sw}'/>` +
+    `<circle cx='18' cy='15.5' r='7' fill='${color}'/>` +
+    `<circle cx='18' cy='15.5' r='2.6' fill='white'/>` +
+    `<text x='32' y='20.5' font-family='sans-serif' font-size='13' font-weight='700' fill='#1f2937'>${escapeXml(label)}</text>` +
+    `<path d='M ${cx - 7},29 L ${cx + 7},29 L ${cx},39 Z' fill='white' stroke='${stroke}' stroke-width='${sw}'/>` +
+    `<path d='M ${cx - 6},30 L ${cx + 6},30 L ${cx},38 Z' fill='white'/>` +
+    `</svg>`
+  return { url: "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg), w, h }
+}
+
 function MapOverlays({
   items,
   enabledRadii,
@@ -238,17 +303,17 @@ function MapOverlays({
 
     items.forEach((it) => {
       const color = CATEGORY_COLORS[it.category]
+      const selected = it.id === selectedId
+      const pin = buildPin(shortName(it.name), color, selected)
       const marker = new google.maps.Marker({
         position: { lat: it.lat, lng: it.lng },
         map,
         title: it.name,
+        zIndex: selected ? 999 : 1,
         icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: it.id === selectedId ? 10 : 7,
-          fillColor: color,
-          fillOpacity: 1,
-          strokeColor: "#ffffff",
-          strokeWeight: 2,
+          url: pin.url,
+          scaledSize: new google.maps.Size(pin.w, pin.h),
+          anchor: new google.maps.Point(pin.w / 2, pin.h),
         },
       })
       marker.addListener("click", () => onSelect(it))
@@ -295,8 +360,15 @@ function MapOverlays({
   return null
 }
 
-// ArmBox風の店舗詳細サイドパネル
-function DetailPanel({ item, onClose }: { item: MapItem; onClose: () => void }) {
+function DetailPanel({
+  item,
+  onClose,
+  onEdit,
+}: {
+  item: MapItem
+  onClose: () => void
+  onEdit?: () => void
+}) {
   const fmt = (v: number | null | undefined) => (v == null ? "—" : Number(v).toLocaleString())
   const txt = (v: string | null | undefined) => (v == null || v === "" ? "—" : v)
   const bool = (v: boolean | null | undefined) => (v == null ? "—" : v ? "○" : "×")
@@ -329,13 +401,20 @@ function DetailPanel({ item, onClose }: { item: MapItem; onClose: () => void }) 
   return (
     <div className="absolute top-3 left-3 z-10 w-[340px] max-h-[calc(100%-24px)] overflow-y-auto rounded-lg shadow-xl bg-white">
       <div
-        className="flex items-center justify-between px-4 py-3 rounded-t-lg text-white"
+        className="flex items-center justify-between px-4 py-3 rounded-t-lg text-white sticky top-0"
         style={{ backgroundColor: CATEGORY_COLORS[item.category] }}
       >
         <div className="font-bold text-base truncate">{item.name}</div>
-        <button onClick={onClose} className="ml-2 rounded-full hover:bg-white/20 p-1">
-          <X className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-1">
+          {onEdit && (
+            <button onClick={onEdit} className="rounded-full hover:bg-white/20 p-1" title="編集">
+              <Pencil className="w-4 h-4" />
+            </button>
+          )}
+          <button onClick={onClose} className="rounded-full hover:bg-white/20 p-1" title="閉じる">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
       </div>
       <div className="px-2 py-2">
         <div className="text-[11px] text-gray-400 px-2 pb-1">
@@ -344,12 +423,10 @@ function DetailPanel({ item, onClose }: { item: MapItem; onClose: () => void }) 
         </div>
         <table className="w-full text-sm">
           <tbody>
-            {rows.map(([k, v]) => (
+            {rows.map(([k, val]) => (
               <tr key={k} className="border-b last:border-b-0">
-                <td className="py-1.5 px-2 text-gray-500 whitespace-nowrap align-top w-1/2 bg-gray-50">
-                  {k}
-                </td>
-                <td className="py-1.5 px-2 text-gray-800 break-words">{v}</td>
+                <td className="py-1.5 px-2 text-gray-500 whitespace-nowrap align-top w-1/2 bg-gray-50">{k}</td>
+                <td className="py-1.5 px-2 text-gray-800 break-words">{val}</td>
               </tr>
             ))}
           </tbody>

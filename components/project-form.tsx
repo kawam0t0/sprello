@@ -57,6 +57,33 @@ const RANK_OPTIONS = ["S", "A", "A-", "B", "B-", "C", "D"]
 const STATUS_OPTIONS = ["検討中", "計画中", "オープン", "閉店", "見送り"]
 const LOCATION_TYPES = ["ロードサイド", "駅前", "住宅街", "商業施設内", "その他"]
 
+// モジュールスコープのテキスト入力（インライン定義だと入力ごとにフォーカスが外れるため外出し）
+function TextField({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+}: {
+  label: string
+  value: string
+  onChange: (s: string) => void
+  placeholder?: string
+  type?: string
+}) {
+  return (
+    <div>
+      <Label className="text-xs text-gray-600">{label}</Label>
+      <Input
+        type={type}
+        value={value ?? ""}
+        placeholder={placeholder}
+        onChange={(e) => onChange(e.target.value)}
+      />
+    </div>
+  )
+}
+
 interface Props {
   open: boolean
   onOpenChange: (v: boolean) => void
@@ -88,30 +115,6 @@ export function ProjectForm({ open, onOpenChange, onSubmit, initial, submitting 
     await onSubmit({ ...v, title })
     setV(EMPTY)
   }
-
-  const TextField = ({
-    label,
-    value,
-    onChange,
-    placeholder,
-    type = "text",
-  }: {
-    label: string
-    value: string
-    onChange: (s: string) => void
-    placeholder?: string
-    type?: string
-  }) => (
-    <div>
-      <Label className="text-xs text-gray-600">{label}</Label>
-      <Input
-        type={type}
-        value={value ?? ""}
-        placeholder={placeholder}
-        onChange={(e) => onChange(e.target.value)}
-      />
-    </div>
-  )
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
