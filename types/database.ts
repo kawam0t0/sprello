@@ -1,3 +1,23 @@
+// 出店プロジェクトのカテゴリ
+export type ProjectCategory = "自社店舗" | "物件" | "出店ターゲット" | "閉店店舗" | "競合"
+
+export const PROJECT_CATEGORIES: ProjectCategory[] = [
+  "自社店舗",
+  "物件",
+  "出店ターゲット",
+  "閉店店舗",
+  "競合",
+]
+
+// カテゴリごとのピン/バッジ色（Google Maps・UI共通）
+export const CATEGORY_COLORS: Record<ProjectCategory, string> = {
+  自社店舗: "#2563eb", // blue
+  物件: "#16a34a", // green
+  出店ターゲット: "#f59e0b", // amber
+  閉店店舗: "#6b7280", // gray
+  競合: "#dc2626", // red
+}
+
 // データベースの型定義
 export interface Card {
   id: string
@@ -16,6 +36,32 @@ export interface Card {
   updated_at: string
   trello_list_id?: string | null
   trello_card_id?: string | null
+
+  // --- ArmBox 出店プロジェクト項目（04-armbox-fields.sql で追加） ---
+  category?: ProjectCategory | null // カテゴリ
+  district?: string | null // 地区
+  property_no?: string | null // 物件番号
+  brand?: string | null // ブランド名
+  store_name?: string | null // 店舗名
+  location_type?: string | null // 立地タイプ
+  prefecture?: string | null // 都道府県
+  address?: string | null // 住所
+  rank?: string | null // ランク
+  traffic_12h?: number | null // 日中12時間交通量
+  surrounding_score?: number | null // 周辺充実度
+  passing_speed?: number | null // 通過速度
+  corner_lot?: boolean | null // 角地
+  visibility?: boolean | null // 視認性
+  awareness?: number | null // 認知度
+  household_income?: number | null // 世帯年収（万円）
+  size_tsubo?: number | null // 広さ（坪）
+  car_capacity?: number | null // 何台並べるか
+  wipe_spaces?: number | null // 拭上げスペース数
+  pop_1km?: number | null // 同心円1.0km人口総数
+  pop_2km?: number | null // 同心円2.0km人口総数
+  pop_5km?: number | null // 同心円5.0km人口総数
+  lat?: number | null // 緯度
+  lng?: number | null // 経度
 }
 
 export interface List {

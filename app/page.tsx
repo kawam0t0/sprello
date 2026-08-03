@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useState } from "react"
-import { Plus, MoreHorizontal, X, Edit, Calendar, Trash2, ExternalLink, LayoutList, CalendarDays } from 'lucide-react'
+import { Plus, MoreHorizontal, X, Edit, Calendar, Trash2, ExternalLink, LayoutList, CalendarDays, MapIcon, MapPin } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
@@ -21,17 +21,24 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
 import { TimelineView } from "@/components/timeline-view"
+import { MapView } from "@/components/map-view"
+import { ProjectForm, type ProjectFormValues } from "@/components/project-form"
 
 // Supabase関連のimport
 import { useBoardData } from "@/hooks/use-board-data"
-import { createCard, updateCard, deleteCard, moveCard, swapCards, getCardCount } from "@/lib/database-operations"
-import type { Card as CardType } from "@/types/database"
+import { createCard, updateCard, deleteCard, moveCard, swapCards, getCardCount, createProject, geocodeAddress } from "@/lib/database-operations"
+import { CATEGORY_COLORS, PROJECT_CATEGORIES } from "@/types/database"
+import type { Card as CardType, ProjectCategory } from "@/types/database"
 
 export default function Home() {
   // Supabaseからデータを取得
   const { board, loading, error, refetch } = useBoardData()
 
-  const [viewMode, setViewMode] = useState<"board" | "timeline">("board")
+  const [viewMode, setViewMode] = useState<"board" | "timeline" | "map">("board")
+
+  // 新規プロジェクト作成フォーム
+  const [projectFormOpen, setProjectFormOpen] = useState(false)
+  const [creatingProject, setCreatingProject] = useState(false)
 
   const [statusOptions, setStatusOptions] = useState(["見積待ち", "融資待ち", "補助金待ち", "社内稟議待ち"])
   const [newStatusOption, setNewStatusOption] = useState("")
@@ -102,6 +109,27 @@ export default function Home() {
     }
   }
 
+  // 新規プロジェクトを作成（先頭リストに追加）
+  const handleCreateProject = async (values: ProjectFormValues) => {
+    if (!board || board.lists.length === 0) {
+      alert("リストがありません。先にリストを作成してください。")
+      return
+    }
+    try {
+      setCreatingProject(true)
+      const targetList = board.lists[0] // 未確定など先頭のリスト
+      const cardCount = await getCardCount(targetList.id)
+      await createProject(targetList.id, values, cardCount)
+      setProjectFormOpen(false)
+      refetch()
+    } catch (error) {
+      console.error("プロジェクト作成エラー:", error)
+      alert("プロジェクトの作成に失敗しました: " + (error instanceof Error ? error.message : "不明なエラー"))
+    } finally {
+      setCreatingProject(false)
+    }
+  }
+
   const addStatusOption = () => {
     if (!newStatusOption.trim() || statusOptions.includes(newStatusOption)) return
 
@@ -112,7 +140,14 @@ export default function Home() {
 
   const handleUpdateCard = async (updatedCard: CardType) => {
     try {
-      console.log("カード更新開始:", updatedCard)
+      // 住所があって緯度経度が無い場合はジオコーディングして補完
+      let lat = updatedCard.lat ?? null
+      let lng = updatedCard.lng ?? null
+      if (updatedCard.address && (lat == null || lng == null)) {
+        const geo = await geocodeAddress(updatedCard.address)
+        lat = geo.lat
+        lng = geo.lng
+      }
       await updateCard(updatedCard.id, {
         title: updatedCard.title,
         status: updatedCard.status,
@@ -123,8 +158,32 @@ export default function Home() {
         candidate_url2: updatedCard.candidate_url2,
         company_name: updatedCard.company_name,
         company_url: updatedCard.company_url,
+        // ArmBox項目
+        category: updatedCard.category,
+        district: updatedCard.district,
+        property_no: updatedCard.property_no,
+        brand: updatedCard.brand,
+        store_name: updatedCard.store_name,
+        location_type: updatedCard.location_type,
+        prefecture: updatedCard.prefecture,
+        address: updatedCard.address,
+        rank: updatedCard.rank,
+        traffic_12h: updatedCard.traffic_12h,
+        surrounding_score: updatedCard.surrounding_score,
+        passing_speed: updatedCard.passing_speed,
+        corner_lot: updatedCard.corner_lot,
+        visibility: updatedCard.visibility,
+        awareness: updatedCard.awareness,
+        household_income: updatedCard.household_income,
+        size_tsubo: updatedCard.size_tsubo,
+        car_capacity: updatedCard.car_capacity,
+        wipe_spaces: updatedCard.wipe_spaces,
+        pop_1km: updatedCard.pop_1km,
+        pop_2km: updatedCard.pop_2km,
+        pop_5km: updatedCard.pop_5km,
+        lat,
+        lng,
       })
-      console.log("カード更新成功")
       refetch() // データを再取得
     } catch (error) {
       console.error("カード更新エラー:", error)
@@ -295,7 +354,24 @@ export default function Home() {
                 <CalendarDays className="w-4 h-4 mr-2" />
                 タイムライン
               </Button>
-              <span className="text-sm">リスト数: {board.lists.length}</span>
+              <Button
+                variant={viewMode === "map" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("map")}
+                className={viewMode === "map" ? "bg-yellow-600 hover:bg-yellow-700" : "hover:bg-yellow-600"}
+              >
+                <MapIcon className="w-4 h-4 mr-2" />
+                マップ
+              </Button>
+              <div className="w-px h-6 bg-yellow-300 mx-1" />
+              <Button
+                size="sm"
+                onClick={() => setProjectFormOpen(true)}
+                className="bg-white text-yellow-700 hover:bg-yellow-50 font-semibold"
+              >
+                <Plus className="w-4 h-4 mr-1" />
+                新規プロジェクト
+              </Button>
             </div>
           </div>
         </div>
@@ -365,6 +441,45 @@ export default function Home() {
                             />
                           </div>
                         </div>
+
+                        {/* ArmBox: カテゴリ・ランク・住所 */}
+                        {(card.category || card.rank || card.address || card.brand) && (
+                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                            {card.category && (
+                              <span
+                                className="text-[10px] px-1.5 py-0.5 rounded-full text-white"
+                                style={{
+                                  backgroundColor:
+                                    CATEGORY_COLORS[(card.category as ProjectCategory)] ?? "#6b7280",
+                                }}
+                              >
+                                {card.category}
+                              </span>
+                            )}
+                            {card.rank && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold">
+                                ランク{card.rank}
+                              </span>
+                            )}
+                            {card.brand && (
+                              <span className="text-[10px] text-gray-500">{card.brand}</span>
+                            )}
+                          </div>
+                        )}
+                        {card.address && (
+                          <div className="mt-1 flex items-start gap-1 text-[11px] text-gray-500">
+                            <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0" />
+                            <span className="line-clamp-1">{card.address}</span>
+                          </div>
+                        )}
+                        {(card.pop_1km != null || card.pop_2km != null || card.pop_5km != null) && (
+                          <div className="mt-1 text-[10px] text-gray-400">
+                            商圏 1/2/5km:{" "}
+                            {[card.pop_1km, card.pop_2km, card.pop_5km]
+                              .map((p) => (p != null ? Number(p).toLocaleString() : "-"))
+                              .join(" / ")}
+                          </div>
+                        )}
 
                         {/* Status and Date Information */}
                         <div className="mt-2 space-y-1">
@@ -525,9 +640,13 @@ export default function Home() {
               ))}
             </div>
           </div>
-        ) : (
+        ) : viewMode === "timeline" ? (
           <div className="flex-1 p-2 sm:p-4 overflow-x-auto min-h-0 bg-white">
             <TimelineView board={board} />
+          </div>
+        ) : (
+          <div className="flex-1 min-h-0 bg-white">
+            <MapView cards={board.lists.flatMap((l) => l.cards)} />
           </div>
         )}
       </div>
@@ -548,6 +667,111 @@ export default function Home() {
                   value={selectedCard.title}
                   onChange={(e) => setSelectedCard({ ...selectedCard, title: e.target.value })}
                 />
+              </div>
+
+              {/* ArmBox 出店データ */}
+              <div className="space-y-3 rounded-lg border border-gray-200 p-3">
+                <h3 className="text-sm font-semibold text-gray-800">出店データ（地図・商圏）</h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs text-gray-600">カテゴリ</Label>
+                    <Select
+                      value={selectedCard.category ?? "自社店舗"}
+                      onValueChange={(val) =>
+                        setSelectedCard({ ...selectedCard, category: val as ProjectCategory })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PROJECT_CATEGORIES.map((c) => (
+                          <SelectItem key={c} value={c}>
+                            {c}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-600">店舗名</Label>
+                    <Input
+                      value={selectedCard.store_name ?? ""}
+                      onChange={(e) => setSelectedCard({ ...selectedCard, store_name: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-600">ブランド名</Label>
+                    <Input
+                      value={selectedCard.brand ?? ""}
+                      onChange={(e) => setSelectedCard({ ...selectedCard, brand: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-600">ランク</Label>
+                    <Input
+                      value={selectedCard.rank ?? ""}
+                      onChange={(e) => setSelectedCard({ ...selectedCard, rank: e.target.value })}
+                    />
+                  </div>
+                  <div className="col-span-2">
+                    <Label className="text-xs text-gray-600">住所（保存時に地図ピンを更新）</Label>
+                    <Input
+                      value={selectedCard.address ?? ""}
+                      placeholder="群馬県太田市新田野井町3-1"
+                      onChange={(e) =>
+                        setSelectedCard({
+                          ...selectedCard,
+                          address: e.target.value,
+                          // 住所を変えたらジオコーディングし直すため緯度経度をクリア
+                          lat: null,
+                          lng: null,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <Label className="text-xs text-gray-600">1km人口</Label>
+                    <Input
+                      type="number"
+                      value={selectedCard.pop_1km?.toString() ?? ""}
+                      onChange={(e) =>
+                        setSelectedCard({
+                          ...selectedCard,
+                          pop_1km: e.target.value === "" ? null : Number(e.target.value),
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-600">2km人口</Label>
+                    <Input
+                      type="number"
+                      value={selectedCard.pop_2km?.toString() ?? ""}
+                      onChange={(e) =>
+                        setSelectedCard({
+                          ...selectedCard,
+                          pop_2km: e.target.value === "" ? null : Number(e.target.value),
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs text-gray-600">5km人口</Label>
+                    <Input
+                      type="number"
+                      value={selectedCard.pop_5km?.toString() ?? ""}
+                      onChange={(e) =>
+                        setSelectedCard({
+                          ...selectedCard,
+                          pop_5km: e.target.value === "" ? null : Number(e.target.value),
+                        })
+                      }
+                    />
+                  </div>
+                </div>
               </div>
 
               {/* Status */}
@@ -777,6 +1001,14 @@ export default function Home() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* 新規プロジェクト作成フォーム */}
+      <ProjectForm
+        open={projectFormOpen}
+        onOpenChange={setProjectFormOpen}
+        onSubmit={handleCreateProject}
+        submitting={creatingProject}
+      />
     </div>
   )
 }
