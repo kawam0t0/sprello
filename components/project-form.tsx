@@ -27,7 +27,7 @@ export type ProjectFormValues = Partial<Card> & { title: string }
 
 const EMPTY: ProjectFormValues = {
   title: "",
-  category: "自社店舗",
+  category: "スプラッシュンゴー",
   district: "",
   property_no: "",
   brand: "",

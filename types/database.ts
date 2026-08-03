@@ -1,21 +1,95 @@
-// 出店プロジェクトのカテゴリ
-export type ProjectCategory = "自社店舗" | "物件" | "出店ターゲット" | "閉店店舗" | "競合"
+// 出店プロジェクトのカテゴリ（ブランド）
+export type ProjectCategory = "スプラッシュンゴー" | "D-Splash" | "丸紅-Splash"
 
 export const PROJECT_CATEGORIES: ProjectCategory[] = [
-  "自社店舗",
-  "物件",
-  "出店ターゲット",
-  "閉店店舗",
-  "競合",
+  "スプラッシュンゴー",
+  "D-Splash",
+  "丸紅-Splash",
 ]
 
 // カテゴリごとのピン/バッジ色（Google Maps・UI共通）
 export const CATEGORY_COLORS: Record<ProjectCategory, string> = {
-  自社店舗: "#2563eb", // blue
-  物件: "#16a34a", // green
-  出店ターゲット: "#f59e0b", // amber
-  閉店店舗: "#6b7280", // gray
-  競合: "#dc2626", // red
+  スプラッシュンゴー: "#2563eb", // blue
+  "D-Splash": "#0891b2", // cyan
+  "丸紅-Splash": "#d97706", // amber
+}
+
+// 旧カテゴリや空値を新3カテゴリに正規化（既存データ対策）
+export function normalizeCategory(value?: string | null): ProjectCategory {
+  if (value === "D-Splash" || value === "丸紅-Splash" || value === "スプラッシュンゴー") {
+    return value
+  }
+  // 旧「自社店舗」その他はスプラッシュンゴー扱い
+  return "スプラッシュンゴー"
+}
+
+// 自社店舗マスター（stores テーブル）
+export interface Store {
+  id: string
+  store_code: string | null
+  store_name: string
+  brand: string | null
+  category: string | null
+  phone: string | null
+  zip_code: string | null
+  address: string | null
+  mail: string | null
+  latitude: number | null
+  longitude: number | null
+  district?: string | null
+  property_no?: string | null
+  location_type?: string | null
+  prefecture?: string | null
+  open_date?: string | null
+  rank?: string | null
+  status?: string | null
+  traffic_12h?: number | null
+  surrounding_score?: number | null
+  passing_speed?: number | null
+  corner_lot?: boolean | null
+  visibility?: boolean | null
+  awareness?: number | null
+  household_income?: number | null
+  size_tsubo?: number | null
+  car_capacity?: number | null
+  wipe_spaces?: number | null
+  pop_1km?: number | null
+  pop_2km?: number | null
+  pop_5km?: number | null
+  created_at?: string
+  updated_at?: string
+}
+
+// 地図上の共通アイテム（自社店舗 or プロジェクト）
+export interface MapItem {
+  id: string
+  kind: "store" | "project"
+  name: string
+  category: ProjectCategory
+  lat: number
+  lng: number
+  address?: string | null
+  brand?: string | null
+  store_code?: string | null
+  phone?: string | null
+  location_type?: string | null
+  prefecture?: string | null
+  open_date?: string | null
+  rank?: string | null
+  status?: string | null
+  traffic_12h?: number | null
+  surrounding_score?: number | null
+  passing_speed?: number | null
+  corner_lot?: boolean | null
+  visibility?: boolean | null
+  awareness?: number | null
+  household_income?: number | null
+  size_tsubo?: number | null
+  car_capacity?: number | null
+  wipe_spaces?: number | null
+  pop_1km?: number | null
+  pop_2km?: number | null
+  pop_5km?: number | null
 }
 
 // データベースの型定義

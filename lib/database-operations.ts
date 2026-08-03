@@ -1,5 +1,15 @@
 import { supabase } from "./supabase"
-import type { Card } from "@/types/database"
+import type { Card, Store } from "@/types/database"
+
+// 自社店舗マスターを取得
+export async function getStores(): Promise<Store[]> {
+  const { data, error } = await supabase.from("stores").select("*").order("store_code")
+  if (error) {
+    console.error("[getStores] error:", error)
+    return []
+  }
+  return (data as Store[]) ?? []
+}
 
 async function createTrelloListForCard(projectName: string, cardData: any) {
   try {
@@ -137,7 +147,7 @@ export async function createProject(
       company_url: fields.company_url ?? "",
       // ArmBox項目
       title: fields.title,
-      category: fields.category ?? "自社店舗",
+      category: fields.category ?? "スプラッシュンゴー",
       district: fields.district ?? "",
       property_no: fields.property_no ?? "",
       brand: fields.brand ?? "",

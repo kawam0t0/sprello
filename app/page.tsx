@@ -27,7 +27,7 @@ import { ProjectForm, type ProjectFormValues } from "@/components/project-form"
 // Supabase関連のimport
 import { useBoardData } from "@/hooks/use-board-data"
 import { createCard, updateCard, deleteCard, moveCard, swapCards, getCardCount, createProject, geocodeAddress } from "@/lib/database-operations"
-import { CATEGORY_COLORS, PROJECT_CATEGORIES } from "@/types/database"
+import { CATEGORY_COLORS, PROJECT_CATEGORIES, normalizeCategory } from "@/types/database"
 import type { Card as CardType, ProjectCategory } from "@/types/database"
 
 export default function Home() {
@@ -378,23 +378,22 @@ export default function Home() {
 
         {/* Board Content */}
         {viewMode === "board" ? (
-          <div className="flex-1 p-2 sm:p-4 overflow-x-auto min-h-0">
-            <div className="flex gap-2 sm:gap-4 min-h-full">
-              {/* Lists */}
+          <div className="flex-1 p-3 sm:p-5 overflow-y-auto min-h-0 space-y-6">
+              {/* 段階ごとのセクション */}
               {board.lists.map((list) => (
                 <div
                   key={list.id}
-                  className={`w-80 min-w-80 sm:w-72 ${getListColor(list.title)} rounded-lg p-3 flex flex-col flex-shrink-0 transition-all duration-200 ${
-                    dragOverList === list.id ? "ring-2 ring-blue-400 ring-opacity-75 shadow-lg scale-105" : ""
-                  } ${draggedCard ? "cursor-pointer" : ""}`}
+                  className={`${getListColor(list.title)} rounded-xl p-4 transition-all duration-200 ${
+                    dragOverList === list.id ? "ring-2 ring-blue-400 ring-opacity-75" : ""
+                  }`}
                   onDragOver={(e) => handleListDragOver(e, list.id)}
                   onDragLeave={handleListDragLeave}
                   onDrop={(e) => handleDrop(e, list.id)}
                 >
                   <div className="flex items-center justify-between mb-3">
                     <div className="flex items-center gap-2">
-                      <h3 className="font-medium text-gray-800">{list.title}</h3>
-                      <span className="bg-gray-300 text-gray-700 text-xs px-2 py-1 rounded-full">
+                      <h3 className="font-bold text-gray-800 text-lg">{list.title}</h3>
+                      <span className="bg-white/70 text-gray-700 text-xs px-2 py-0.5 rounded-full">
                         {list.cards.length}
                       </span>
                     </div>
@@ -403,7 +402,7 @@ export default function Home() {
                     </Button>
                   </div>
 
-                  <div className="flex-1 space-y-2 overflow-y-visible">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 items-start">
                     {list.cards.map((card) => (
                       <Card
                         key={card.id}
@@ -445,17 +444,12 @@ export default function Home() {
                         {/* ArmBox: カテゴリ・ランク・住所 */}
                         {(card.category || card.rank || card.address || card.brand) && (
                           <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                            {card.category && (
-                              <span
-                                className="text-[10px] px-1.5 py-0.5 rounded-full text-white"
-                                style={{
-                                  backgroundColor:
-                                    CATEGORY_COLORS[(card.category as ProjectCategory)] ?? "#6b7280",
-                                }}
-                              >
-                                {card.category}
-                              </span>
-                            )}
+                            <span
+                              className="text-[10px] px-1.5 py-0.5 rounded-full text-white"
+                              style={{ backgroundColor: CATEGORY_COLORS[normalizeCategory(card.category)] }}
+                            >
+                              {normalizeCategory(card.category)}
+                            </span>
                             {card.rank && (
                               <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold">
                                 ランク{card.rank}
@@ -573,16 +567,16 @@ export default function Home() {
                       </Card>
                     ))}
                     {/* Empty Drop Zone for lists with no cards */}
-                    {list.cards.length === 0 && draggedCard && (
+                    {list.cards.length === 0 && (
                       <div
-                        className={`h-20 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center text-gray-500 transition-all duration-200 ${
+                        className={`col-span-full h-20 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center text-gray-400 text-sm transition-all duration-200 ${
                           dragOverList === list.id ? "border-blue-400 bg-blue-50" : ""
                         }`}
                         onDragOver={(e) => handleListDragOver(e, list.id)}
                         onDragLeave={handleListDragLeave}
                         onDrop={(e) => handleDrop(e, list.id)}
                       >
-                        ここにドロップ
+                        {draggedCard ? "ここにドロップ" : "プロジェクトなし"}
                       </div>
                     )}
                   </div>
@@ -638,7 +632,6 @@ export default function Home() {
                   </div>
                 </div>
               ))}
-            </div>
           </div>
         ) : viewMode === "timeline" ? (
           <div className="flex-1 p-2 sm:p-4 overflow-x-auto min-h-0 bg-white">
