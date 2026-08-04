@@ -12,22 +12,19 @@ export async function getStores(): Promise<Store[]> {
   return (data as Store[]) ?? []
 }
 
-// e-Statから半径1/2/5km圏内の人口を取得
+// e-Statから半径1/2/5km圏内の人口を取得（診断情報も一緒に返す）
 export async function fetchPopulation(
   lat: number,
   lng: number,
-): Promise<{ pop_1km: number; pop_2km: number; pop_5km: number } | null> {
+): Promise<any> {
   try {
     const res = await fetch(`/api/estat/population?lat=${lat}&lng=${lng}`)
     const data = await res.json()
-    if (data.error || data.pop_5km == null) {
-      console.warn("[fetchPopulation]", data.error, data.diag)
-      return null
-    }
-    return { pop_1km: data.pop_1km, pop_2km: data.pop_2km, pop_5km: data.pop_5km }
+    console.log("[fetchPopulation]", data)
+    return data
   } catch (e) {
     console.error("[fetchPopulation] error:", e)
-    return null
+    return { error: e instanceof Error ? e.message : String(e) }
   }
 }
 

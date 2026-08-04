@@ -76,12 +76,15 @@ export function StoreForm({ store, open, onOpenChange, onSubmit, submitting }: P
     }
     setFetchingPop(true)
     try {
-      const pop = await fetchPopulation(v.latitude, v.longitude)
-      if (!pop) {
-        alert("人口の取得に失敗しました。コンソールの [fetchPopulation] を確認してください。")
-        return
+      const data = await fetchPopulation(v.latitude, v.longitude)
+      if (data && data.pop_5km != null) {
+        set({ pop_1km: data.pop_1km, pop_2km: data.pop_2km, pop_5km: data.pop_5km })
+      } else {
+        alert(
+          "人口の取得に失敗しました。診断情報:\n\n" +
+            JSON.stringify(data?.diag ?? data ?? {}, null, 2),
+        )
       }
-      set({ pop_1km: pop.pop_1km, pop_2km: pop.pop_2km, pop_5km: pop.pop_5km })
     } finally {
       setFetchingPop(false)
     }
