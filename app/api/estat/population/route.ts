@@ -76,31 +76,11 @@ export async function GET(request: Request) {
   const ring = meshesInRadius(lat, lng)
   const codes = Object.keys(ring)
 
-  // データセットID：環境変数優先。無ければ検索で自動特定を試みる。
-  let statsDataId = process.env.ESTAT_STATS_DATA_ID || ""
-  const diag: any = { meshCount: codes.length, statsDataId, tried: [] as string[] }
+  // 令和2年国勢調査・3次メッシュ（約1km）「人口及び世帯」= T001140
+  const statsDataId = process.env.ESTAT_STATS_DATA_ID || "T001140"
+  const diag: any = { meshCount: codes.length, statsDataId }
 
   try {
-    if (!statsDataId) {
-      const list = await estat("getStatsList", {
-        appId,
-        searchWord: "国勢調査 人口 メッシュ 総数",
-        limit: "5",
-      })
-      const tables = list?.GET_STATS_LIST?.DATALIST_INF?.TABLE_INF
-      const arr = Array.isArray(tables) ? tables : tables ? [tables] : []
-      diag.candidates = arr.map((t: any) => ({ id: t?.["@id"], title: t?.TITLE?.$ ?? t?.TITLE }))
-      statsDataId = arr[0]?.["@id"] ?? ""
-      diag.statsDataId = statsDataId
-    }
-
-    if (!statsDataId) {
-      return NextResponse.json({
-        error: "統計表IDを特定できませんでした。ESTAT_STATS_DATA_ID を設定してください。",
-        diag,
-      })
-    }
-
     const data = await estat("getStatsData", {
       appId,
       statsDataId,
