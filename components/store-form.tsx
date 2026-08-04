@@ -20,6 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import type { Store } from "@/types/database"
+import { geocodeAddress } from "@/lib/database-operations"
 
 const RANK_OPTIONS = ["S", "A", "A-", "B", "B-", "C", "D"]
 const STATUS_OPTIONS = ["検討中", "計画中", "オープン", "閉店", "見送り"]
@@ -71,6 +72,19 @@ export function StoreForm({ store, open, onOpenChange, onSubmit, submitting }: P
 
   if (!store) return null
 
+  const handleSubmit = async () => {
+    const patch: Partial<Store> = { ...v }
+    // 住所を変更したら座標を取り直す
+    if (v.address && v.address !== store.address) {
+      const geo = await geocodeAddress(v.address)
+      if (geo.lat != null && geo.lng != null) {
+        patch.latitude = geo.lat
+        patch.longitude = geo.lng
+      }
+    }
+    await onSubmit(store.id, patch)
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -81,6 +95,20 @@ export function StoreForm({ store, open, onOpenChange, onSubmit, submitting }: P
         <div className="space-y-5">
           <section className="space-y-3">
             <h3 className="text-sm font-semibold text-gray-800 border-b pb-1">基本情報</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div>
+                <Label className="text-xs text-gray-600">店舗名</Label>
+                <Input value={v.store_name ?? ""} onChange={(e) => set({ store_name: e.target.value })} />
+              </div>
+              <div className="md:col-span-2">
+                <Label className="text-xs text-gray-600">住所（変更すると地図ピンも更新）</Label>
+                <Input value={v.address ?? ""} onChange={(e) => set({ address: e.target.value })} />
+              </div>
+              <div>
+                <Label className="text-xs text-gray-600">電話番号</Label>
+                <Input value={v.phone ?? ""} onChange={(e) => set({ phone: e.target.value })} />
+              </div>
+            </div>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div>
                 <Label className="text-xs text-gray-600">立地タイプ</Label>
@@ -162,7 +190,7 @@ export function StoreForm({ store, open, onOpenChange, onSubmit, submitting }: P
             キャンセル
           </Button>
           <Button
-            onClick={() => onSubmit(store.id, v)}
+            onClick={handleSubmit}
             disabled={submitting}
             className="bg-yellow-500 hover:bg-yellow-600"
           >

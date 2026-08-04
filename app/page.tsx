@@ -23,6 +23,8 @@ import { Label } from "@/components/ui/label"
 import { TimelineView } from "@/components/timeline-view"
 import { MapView } from "@/components/map-view"
 import { ProjectForm, type ProjectFormValues } from "@/components/project-form"
+import { ProjectCard } from "@/components/project-card"
+import { StoresView } from "@/components/stores-view"
 
 // Supabase関連のimport
 import { useBoardData } from "@/hooks/use-board-data"
@@ -34,7 +36,10 @@ export default function Home() {
   // Supabaseからデータを取得
   const { board, loading, error, refetch } = useBoardData()
 
-  const [viewMode, setViewMode] = useState<"board" | "timeline" | "map">("board")
+  const [viewMode, setViewMode] = useState<"board" | "timeline" | "map" | "stores">("board")
+
+  // ボードのヨミ絞り込み（"all" or list.id）
+  const [yomiFilter, setYomiFilter] = useState<string>("all")
 
   // 新規プロジェクト作成フォーム
   const [projectFormOpen, setProjectFormOpen] = useState(false)
@@ -363,6 +368,15 @@ export default function Home() {
                 <MapIcon className="w-4 h-4 mr-2" />
                 マップ
               </Button>
+              <Button
+                variant={viewMode === "stores" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("stores")}
+                className={viewMode === "stores" ? "bg-yellow-600 hover:bg-yellow-700" : "hover:bg-yellow-600"}
+              >
+                <LayoutList className="w-4 h-4 mr-2" />
+                店舗一覧表
+              </Button>
               <div className="w-px h-6 bg-yellow-300 mx-1" />
               <Button
                 size="sm"
@@ -378,269 +392,62 @@ export default function Home() {
 
         {/* Board Content */}
         {viewMode === "board" ? (
-          <div className="flex-1 p-3 sm:p-5 overflow-y-auto min-h-0 space-y-6">
-              {/* 段階ごとのセクション */}
+          <div className="flex-1 p-3 sm:p-5 overflow-y-auto min-h-0">
+            {/* ヨミで絞り込み */}
+            <div className="flex items-center gap-2 flex-wrap mb-4">
+              <span className="text-sm text-gray-600 mr-1">ヨミで絞り込み:</span>
+              <button
+                onClick={() => setYomiFilter("all")}
+                className={`px-3 py-1.5 rounded-full text-sm border ${
+                  yomiFilter === "all"
+                    ? "bg-emerald-500 text-white border-emerald-500"
+                    : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+                }`}
+              >
+                全て ({board.lists.reduce((n, l) => n + l.cards.length, 0)})
+              </button>
               {board.lists.map((list) => (
-                <div
+                <button
                   key={list.id}
-                  className={`${getListColor(list.title)} rounded-xl p-4 transition-all duration-200 ${
-                    dragOverList === list.id ? "ring-2 ring-blue-400 ring-opacity-75" : ""
+                  onClick={() => setYomiFilter(list.id)}
+                  className={`px-3 py-1.5 rounded-full text-sm border ${
+                    yomiFilter === list.id
+                      ? "bg-emerald-500 text-white border-emerald-500"
+                      : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
                   }`}
-                  onDragOver={(e) => handleListDragOver(e, list.id)}
-                  onDragLeave={handleListDragLeave}
-                  onDrop={(e) => handleDrop(e, list.id)}
                 >
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-gray-800 text-lg">{list.title}</h3>
-                      <span className="bg-white/70 text-gray-700 text-xs px-2 py-0.5 rounded-full">
-                        {list.cards.length}
-                      </span>
-                    </div>
-                    <Button variant="ghost" size="sm">
-                      <MoreHorizontal className="w-4 h-4" />
-                    </Button>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 items-start">
-                    {list.cards.map((card) => (
-                      <Card
-                        key={card.id}
-                        className={`p-3 bg-white shadow-sm hover:shadow-md cursor-pointer transition-all duration-200 ${
-                          draggedCard?.id === card.id ? "opacity-50 rotate-2 scale-105" : ""
-                        } ${
-                          dragOverCard === card.id && draggedCard?.id !== card.id
-                            ? "border-2 border-blue-400 border-dashed"
-                            : ""
-                        }`}
-                        draggable
-                        onDragStart={() => handleDragStart(card, list.id)}
-                        onDragEnd={handleDragEnd}
-                        onDoubleClick={() => handleCardDoubleClick(card)}
-                        onDragOver={(e) => handleCardDragOver(e, card.id)}
-                        onDragLeave={handleCardDragLeave}
-                        onDrop={(e) => handleCardDrop(e, card, list.id)}
-                      >
-                        <div className="flex items-start justify-between">
-                          <p className="text-sm text-gray-800 flex-1">{card.title}</p>
-                          <div className="flex items-center gap-1 ml-2 flex-shrink-0">
-                            <Edit
-                              className="w-3 h-3 text-gray-400 cursor-pointer hover:text-gray-600"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleCardDoubleClick(card)
-                              }}
-                            />
-                            <Trash2
-                              className="w-3 h-3 text-red-400 cursor-pointer hover:text-red-600"
-                              onClick={(e) => {
-                                e.stopPropagation()
-                                handleDeleteClick(card.id, list.id)
-                              }}
-                            />
-                          </div>
-                        </div>
-
-                        {/* ArmBox: カテゴリ・ランク・住所 */}
-                        {(card.category || card.rank || card.address || card.brand) && (
-                          <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                            <span
-                              className="text-[10px] px-1.5 py-0.5 rounded-full text-white"
-                              style={{ backgroundColor: CATEGORY_COLORS[normalizeCategory(card.category)] }}
-                            >
-                              {normalizeCategory(card.category)}
-                            </span>
-                            {card.rank && (
-                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold">
-                                ランク{card.rank}
-                              </span>
-                            )}
-                            {card.brand && (
-                              <span className="text-[10px] text-gray-500">{card.brand}</span>
-                            )}
-                          </div>
-                        )}
-                        {card.address && (
-                          <div className="mt-1 flex items-start gap-1 text-[11px] text-gray-500">
-                            <MapPin className="w-3 h-3 mt-0.5 flex-shrink-0" />
-                            <span className="line-clamp-1">{card.address}</span>
-                          </div>
-                        )}
-                        {(card.pop_1km != null || card.pop_2km != null || card.pop_5km != null) && (
-                          <div className="mt-1 text-[10px] text-gray-400">
-                            商圏 1/2/5km:{" "}
-                            {[card.pop_1km, card.pop_2km, card.pop_5km]
-                              .map((p) => (p != null ? Number(p).toLocaleString() : "-"))
-                              .join(" / ")}
-                          </div>
-                        )}
-
-                        {/* Status and Date Information */}
-                        <div className="mt-2 space-y-1">
-                          {card.status && (
-                            <div>
-                              <span className="bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
-                                {card.status}
-                              </span>
-                            </div>
-                          )}
-                          {card.open_date && (
-                            <div>
-                              <span className="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">
-                                OPEN:{" "}
-                                {new Date(card.open_date).toLocaleDateString("ja-JP", {
-                                  year: "numeric",
-                                  month: "numeric",
-                                  day: "numeric",
-                                })}
-                                予定
-                              </span>
-                            </div>
-                          )}
-                          {card.start_date && (
-                            <div>
-                              <span className="bg-red-100 text-red-800 text-xs px-2 py-1 rounded-full">
-                                着工:{" "}
-                                {new Date(card.start_date).toLocaleDateString("ja-JP", {
-                                  year: "numeric",
-                                  month: "numeric",
-                                  day: "numeric",
-                                })}
-                                予定
-                              </span>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Company Name if available */}
-                        {card.company_name && (
-                          <div className="mt-1">
-                            <span className="bg-purple-100 text-purple-800 text-xs px-2 py-1 rounded-full">
-                              {card.company_name}
-                            </span>
-                          </div>
-                        )}
-                        {/* URL Links if available */}
-                        {(card.candidate_url || card.candidate_url2 || card.company_url) && (
-                          <div className="mt-2 flex flex-wrap gap-1">
-                            {card.company_url && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  window.open(card.company_url, '_blank', 'noopener,noreferrer')
-                                }}
-                                className="bg-indigo-100 text-indigo-800 text-xs px-2 py-1 rounded-full hover:bg-indigo-200 transition-colors flex items-center gap-1"
-                                title="企業サイトを開く"
-                              >
-                                <ExternalLink className="w-3 h-3" />
-                                企業
-                              </button>
-                            )}
-                            {card.candidate_url && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  window.open(card.candidate_url, '_blank', 'noopener,noreferrer')
-                                }}
-                                className="bg-teal-100 text-teal-800 text-xs px-2 py-1 rounded-full hover:bg-teal-200 transition-colors flex items-center gap-1"
-                                title="候補地1を開く"
-                              >
-                                <ExternalLink className="w-3 h-3" />
-                                候補地1
-                              </button>
-                            )}
-                            {card.candidate_url2 && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation()
-                                  window.open(card.candidate_url2, '_blank', 'noopener,noreferrer')
-                                }}
-                                className="bg-cyan-100 text-cyan-800 text-xs px-2 py-1 rounded-full hover:bg-cyan-200 transition-colors flex items-center gap-1"
-                                title="候補地2を開く"
-                              >
-                                <ExternalLink className="w-3 h-3" />
-                                候補地2
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </Card>
-                    ))}
-                    {/* Empty Drop Zone for lists with no cards */}
-                    {list.cards.length === 0 && (
-                      <div
-                        className={`col-span-full h-20 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center text-gray-400 text-sm transition-all duration-200 ${
-                          dragOverList === list.id ? "border-blue-400 bg-blue-50" : ""
-                        }`}
-                        onDragOver={(e) => handleListDragOver(e, list.id)}
-                        onDragLeave={handleListDragLeave}
-                        onDrop={(e) => handleDrop(e, list.id)}
-                      >
-                        {draggedCard ? "ここにドロップ" : "プロジェクトなし"}
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Add Card */}
-                  <div className="mt-2">
-                    {showAddCard === list.id ? (
-                      <div className="space-y-2">
-                        <Input
-                          placeholder="カードのタイトルを入力..."
-                          value={newCardTitle}
-                          onChange={(e) => setNewCardTitle(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              addCard(list.id)
-                            } else if (e.key === "Escape") {
-                              setShowAddCard(null)
-                              setNewCardTitle("")
-                            }
-                          }}
-                          autoFocus
-                        />
-                        <div className="flex gap-2">
-                          <Button
-                            size="sm"
-                            onClick={() => addCard(list.id)}
-                            className="bg-yellow-500 hover:bg-yellow-600"
-                          >
-                            カードを追加
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => {
-                              setShowAddCard(null)
-                              setNewCardTitle("")
-                            }}
-                          >
-                            <X className="w-4 h-4" />
-                          </Button>
-                        </div>
-                      </div>
-                    ) : (
-                      <Button
-                        variant="ghost"
-                        className="w-full justify-start text-gray-600 hover:bg-gray-200"
-                        onClick={() => setShowAddCard(list.id)}
-                      >
-                        <Plus className="w-4 h-4 mr-2" />
-                        カードを追加
-                      </Button>
-                    )}
-                  </div>
-                </div>
+                  {list.title} ({list.cards.length})
+                </button>
               ))}
+            </div>
+
+            {/* 追加順のカードグリッド */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+              {board.lists
+                .filter((l) => yomiFilter === "all" || l.id === yomiFilter)
+                .flatMap((l) => l.cards)
+                .slice()
+                .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+                .map((card) => (
+                  <ProjectCard
+                    key={card.id}
+                    card={card}
+                    onOpen={handleCardDoubleClick}
+                    onDelete={(id) => handleDeleteClick(id, card.list_id)}
+                  />
+                ))}
+            </div>
           </div>
         ) : viewMode === "timeline" ? (
           <div className="flex-1 p-2 sm:p-4 overflow-x-auto min-h-0 bg-white">
             <TimelineView board={board} />
           </div>
-        ) : (
+        ) : viewMode === "map" ? (
           <div className="bg-white" style={{ height: "calc(100vh - 72px)" }}>
             <MapView cards={board.lists.flatMap((l) => l.cards)} />
           </div>
+        ) : (
+          <StoresView />
         )}
       </div>
 
@@ -662,6 +469,35 @@ export default function Home() {
                 />
               </div>
 
+              {/* ヨミ（段階） */}
+              <div>
+                <Label htmlFor="yomi">ヨミ（段階）</Label>
+                <Select
+                  value={selectedCard.list_id}
+                  onValueChange={async (val) => {
+                    try {
+                      const count = await getCardCount(val)
+                      await moveCard(selectedCard.id, val, count)
+                      setSelectedCard({ ...selectedCard, list_id: val })
+                      refetch()
+                    } catch (err) {
+                      console.error("ヨミ変更エラー:", err)
+                    }
+                  }}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {board.lists.map((l) => (
+                      <SelectItem key={l.id} value={l.id}>
+                        {l.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               {/* ArmBox 出店データ */}
               <div className="space-y-3 rounded-lg border border-gray-200 p-3">
                 <h3 className="text-sm font-semibold text-gray-800">出店データ（地図・商圏）</h3>
@@ -669,7 +505,7 @@ export default function Home() {
                   <div>
                     <Label className="text-xs text-gray-600">カテゴリ</Label>
                     <Select
-                      value={selectedCard.category ?? "自社店舗"}
+                      value={normalizeCategory(selectedCard.category)}
                       onValueChange={(val) =>
                         setSelectedCard({ ...selectedCard, category: val as ProjectCategory })
                       }

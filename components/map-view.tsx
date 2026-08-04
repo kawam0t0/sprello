@@ -100,9 +100,8 @@ export function MapView({ cards }: MapViewProps) {
   })
   const [activeRadii, setActiveRadii] = useState<Record<number, boolean>>({ 1: false, 2: true, 5: false })
   const [circleAll, setCircleAll] = useState(false)
-  const [selected, setSelected] = useState<MapItem | null>(null)
+  const [selectedIds, setSelectedIds] = useState<string[]>([])
 
-  // 店舗編集
   const [editStore, setEditStore] = useState<Store | null>(null)
   const [saving, setSaving] = useState(false)
 
@@ -116,6 +115,14 @@ export function MapView({ cards }: MapViewProps) {
     () => allItems.filter((it) => visibleCats[it.category]),
     [allItems, visibleCats],
   )
+
+  // 選択はIDで保持し、最新データから列を作る（比較用）
+  const selectedItems = useMemo(
+    () => selectedIds.map((id) => allItems.find((it) => it.id === id)).filter(Boolean) as MapItem[],
+    [selectedIds, allItems],
+  )
+  const toggleSelect = (it: MapItem) =>
+    setSelectedIds((prev) => (prev.includes(it.id) ? prev.filter((x) => x !== it.id) : [...prev, it.id]))
 
   if (!apiKey) {
     return (
@@ -131,11 +138,10 @@ export function MapView({ cards }: MapViewProps) {
 
   const enabledRadii = RADII.filter((r) => activeRadii[r.km]).map((r) => r.km)
 
-  const handleEditFromPanel = () => {
-    if (selected?.kind !== "store") return
-    const realId = selected.id.replace("store-", "")
-    const s = stores.find((x) => x.id === realId) ?? null
-    setEditStore(s)
+  const handleEditItem = (item: MapItem) => {
+    if (item.kind !== "store") return
+    const realId = item.id.replace("store-", "")
+    setEditStore(stores.find((x) => x.id === realId) ?? null)
   }
 
   const handleSaveStore = async (id: string, patch: Partial<Store>) => {
@@ -144,8 +150,6 @@ export function MapView({ cards }: MapViewProps) {
       await updateStore(id, patch)
       await refreshStores()
       setEditStore(null)
-      // サイドパネルの表示も更新
-      setSelected(null)
     } catch (e) {
       alert("保存に失敗しました: " + (e instanceof Error ? e.message : "不明なエラー"))
     } finally {
@@ -199,17 +203,23 @@ export function MapView({ cards }: MapViewProps) {
             <input type="checkbox" checked={circleAll} onChange={(e) => setCircleAll(e.target.checked)} />
             全店舗に表示
           </label>
-          {!circleAll && <p className="text-xs text-gray-400 mt-1">ピンを選んだ店舗のみ表示</p>}
+          {!circleAll && <p className="text-xs text-gray-400 mt-1">選択中の店舗のみ表示</p>}
         </div>
 
         <div className="text-xs text-gray-400">
           地図上ピン: {visibleItems.length} 件<br />
           （自社店舗 {stores.filter((s) => s.latitude != null).length} 件 / プロジェクト{" "}
           {cards.filter((c) => c.lat != null).length} 件）
+          {selectedItems.length > 0 && (
+            <>
+              <br />
+              比較中: {selectedItems.length} 件
+            </>
+          )}
         </div>
       </div>
 
-      {/* 右：地図＋サイドパネル */}
+      {/* 右：地図＋比較パネル */}
       <div className="flex-1 relative">
         <APIProvider apiKey={apiKey}>
           <Map
@@ -223,17 +233,18 @@ export function MapView({ cards }: MapViewProps) {
               items={visibleItems}
               enabledRadii={enabledRadii}
               circleAll={circleAll}
-              selectedId={selected?.id ?? null}
-              onSelect={setSelected}
+              selectedIds={selectedIds}
+              onSelect={toggleSelect}
             />
           </Map>
         </APIProvider>
 
-        {selected && (
-          <DetailPanel
-            item={selected}
-            onClose={() => setSelected(null)}
-            onEdit={selected.kind === "store" ? handleEditFromPanel : undefined}
+        {selectedItems.length > 0 && (
+          <ComparePanel
+            items={selectedItems}
+            onRemove={(id) => setSelectedIds((prev) => prev.filter((x) => x !== id))}
+            onEdit={handleEditItem}
+            onClear={() => setSelectedIds([])}
           />
         )}
       </div>
@@ -260,7 +271,6 @@ function escapeXml(s: string): string {
 }
 
 function buildPin(label: string, color: string, selected: boolean): { url: string; w: number; h: number } {
-  // 日本語は幅が広いので1文字あたり13px程度で見積もり
   const textW = Math.max(label.length * 13, 20)
   const w = Math.ceil(30 + textW + 12)
   const h = 40
@@ -283,13 +293,13 @@ function MapOverlays({
   items,
   enabledRadii,
   circleAll,
-  selectedId,
+  selectedIds,
   onSelect,
 }: {
   items: MapItem[]
   enabledRadii: number[]
   circleAll: boolean
-  selectedId: string | null
+  selectedIds: string[]
   onSelect: (it: MapItem) => void
 }) {
   const map = useMap()
@@ -303,7 +313,7 @@ function MapOverlays({
 
     items.forEach((it) => {
       const color = CATEGORY_COLORS[it.category]
-      const selected = it.id === selectedId
+      const selected = selectedIds.includes(it.id)
       const pin = buildPin(shortName(it.name), color, selected)
       const marker = new google.maps.Marker({
         position: { lat: it.lat, lng: it.lng },
@@ -324,14 +334,14 @@ function MapOverlays({
       markersRef.current.forEach((m) => m.setMap(null))
       markersRef.current = []
     }
-  }, [map, items, selectedId, onSelect])
+  }, [map, items, selectedIds, onSelect])
 
   useEffect(() => {
     if (!map || typeof google === "undefined") return
     circlesRef.current.forEach((c) => c.setMap(null))
     circlesRef.current = []
 
-    const targets = circleAll ? items : items.filter((it) => it.id === selectedId)
+    const targets = circleAll ? items : items.filter((it) => selectedIds.includes(it.id))
     targets.forEach((it) => {
       const color = CATEGORY_COLORS[it.category]
       enabledRadii.forEach((km) => {
@@ -355,82 +365,111 @@ function MapOverlays({
       circlesRef.current.forEach((c) => c.setMap(null))
       circlesRef.current = []
     }
-  }, [map, items, enabledRadii, circleAll, selectedId])
+  }, [map, items, enabledRadii, circleAll, selectedIds])
 
   return null
 }
 
-function DetailPanel({
-  item,
-  onClose,
-  onEdit,
-}: {
-  item: MapItem
-  onClose: () => void
-  onEdit?: () => void
-}) {
+// ---- ArmBox風の複数店舗 比較パネル ----
+const COMPARE_ROWS: { label: string; get: (it: MapItem) => string }[] = (() => {
   const fmt = (v: number | null | undefined) => (v == null ? "—" : Number(v).toLocaleString())
   const txt = (v: string | null | undefined) => (v == null || v === "" ? "—" : v)
   const bool = (v: boolean | null | undefined) => (v == null ? "—" : v ? "○" : "×")
-
-  const rows: [string, string][] = [
-    ["カテゴリ", txt(item.category)],
-    ["ブランド", txt(item.brand)],
-    ["ステータス", txt(item.status)],
-    ["立地タイプ", txt(item.location_type)],
-    ["都道府県", txt(item.prefecture)],
-    ["住所", txt(item.address)],
-    ["開店日", txt(item.open_date)],
-    ["ランク", txt(item.rank)],
-    ["日中12時間交通量", fmt(item.traffic_12h)],
-    ["周辺充実度", fmt(item.surrounding_score)],
-    ["通過速度", fmt(item.passing_speed)],
-    ["角地", bool(item.corner_lot)],
-    ["視認性", bool(item.visibility)],
-    ["認知度", fmt(item.awareness)],
-    ["世帯年収（万円）", fmt(item.household_income)],
-    ["広さ（坪）", fmt(item.size_tsubo)],
-    ["何台並べるか", fmt(item.car_capacity)],
-    ["拭上げスペース数", fmt(item.wipe_spaces)],
-    ["同心円1.0km人口", fmt(item.pop_1km)],
-    ["同心円2.0km人口", fmt(item.pop_2km)],
-    ["同心円5.0km人口", fmt(item.pop_5km)],
+  return [
+    { label: "区分", get: (it) => (it.kind === "store" ? "自社店舗" : "プロジェクト") },
+    { label: "カテゴリ", get: (it) => txt(it.category) },
+    { label: "物件/店舗No", get: (it) => txt(it.store_code) },
+    { label: "ブランド", get: (it) => txt(it.brand) },
+    { label: "ステータス", get: (it) => txt(it.status) },
+    { label: "立地タイプ", get: (it) => txt(it.location_type) },
+    { label: "都道府県", get: (it) => txt(it.prefecture) },
+    { label: "住所", get: (it) => txt(it.address) },
+    { label: "電話番号", get: (it) => txt(it.phone) },
+    { label: "開店日", get: (it) => txt(it.open_date) },
+    { label: "ランク", get: (it) => txt(it.rank) },
+    { label: "日中12時間交通量", get: (it) => fmt(it.traffic_12h) },
+    { label: "周辺充実度", get: (it) => fmt(it.surrounding_score) },
+    { label: "通過速度", get: (it) => fmt(it.passing_speed) },
+    { label: "角地", get: (it) => bool(it.corner_lot) },
+    { label: "視認性", get: (it) => bool(it.visibility) },
+    { label: "認知度", get: (it) => fmt(it.awareness) },
+    { label: "世帯年収（万円）", get: (it) => fmt(it.household_income) },
+    { label: "広さ（坪）", get: (it) => fmt(it.size_tsubo) },
+    { label: "何台並べるか", get: (it) => fmt(it.car_capacity) },
+    { label: "拭上げスペース数", get: (it) => fmt(it.wipe_spaces) },
+    { label: "同心円1.0km人口", get: (it) => fmt(it.pop_1km) },
+    { label: "同心円2.0km人口", get: (it) => fmt(it.pop_2km) },
+    { label: "同心円5.0km人口", get: (it) => fmt(it.pop_5km) },
   ]
-  if (item.phone) rows.splice(6, 0, ["電話番号", txt(item.phone)])
+})()
 
+function ComparePanel({
+  items,
+  onRemove,
+  onEdit,
+  onClear,
+}: {
+  items: MapItem[]
+  onRemove: (id: string) => void
+  onEdit: (item: MapItem) => void
+  onClear: () => void
+}) {
   return (
-    <div className="absolute top-3 left-3 z-10 w-[340px] max-h-[calc(100%-24px)] overflow-y-auto rounded-lg shadow-xl bg-white">
-      <div
-        className="flex items-center justify-between px-4 py-3 rounded-t-lg text-white sticky top-0"
-        style={{ backgroundColor: CATEGORY_COLORS[item.category] }}
-      >
-        <div className="font-bold text-base truncate">{item.name}</div>
-        <div className="flex items-center gap-1">
-          {onEdit && (
-            <button onClick={onEdit} className="rounded-full hover:bg-white/20 p-1" title="編集">
-              <Pencil className="w-4 h-4" />
-            </button>
-          )}
-          <button onClick={onClose} className="rounded-full hover:bg-white/20 p-1" title="閉じる">
-            <X className="w-4 h-4" />
-          </button>
-        </div>
+    <div className="absolute top-3 left-3 right-3 z-10 max-h-[calc(100%-24px)] bg-white rounded-lg shadow-2xl flex flex-col overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-2.5 bg-slate-800 text-white">
+        <div className="font-bold text-sm">施設詳細（比較 {items.length} 件）</div>
+        <button onClick={onClear} className="text-xs bg-white/15 hover:bg-white/25 px-2 py-1 rounded">
+          全てクリア
+        </button>
       </div>
-      <div className="px-2 py-2">
-        <div className="text-[11px] text-gray-400 px-2 pb-1">
-          {item.kind === "store" ? "自社店舗" : "プロジェクト"}
-          {item.store_code ? `・No.${item.store_code}` : ""}
-        </div>
-        <table className="w-full text-sm">
+
+      <div className="overflow-auto">
+        <table className="border-collapse text-sm">
+          <thead>
+            <tr>
+              <th className="sticky left-0 z-10 bg-gray-100 border-b border-r px-3 py-2 text-left w-36 min-w-36" />
+              {items.map((it) => (
+                <th
+                  key={it.id}
+                  className="border-b border-r px-3 py-2 text-left min-w-[190px] align-top"
+                  style={{ borderTop: `3px solid ${CATEGORY_COLORS[it.category]}` }}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="font-bold text-gray-800 leading-tight">{it.name}</div>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {it.kind === "store" && (
+                        <button onClick={() => onEdit(it)} title="編集" className="text-gray-400 hover:text-gray-700">
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      <button onClick={() => onRemove(it.id)} title="外す" className="text-gray-400 hover:text-red-600">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </th>
+              ))}
+            </tr>
+          </thead>
           <tbody>
-            {rows.map(([k, val]) => (
-              <tr key={k} className="border-b last:border-b-0">
-                <td className="py-1.5 px-2 text-gray-500 whitespace-nowrap align-top w-1/2 bg-gray-50">{k}</td>
-                <td className="py-1.5 px-2 text-gray-800 break-words">{val}</td>
+            {COMPARE_ROWS.map((row) => (
+              <tr key={row.label}>
+                <td className="sticky left-0 z-10 bg-gray-50 border-b border-r px-3 py-1.5 text-gray-500 whitespace-nowrap font-medium">
+                  {row.label}
+                </td>
+                {items.map((it) => (
+                  <td key={it.id} className="border-b border-r px-3 py-1.5 text-gray-800 break-words">
+                    {row.get(it)}
+                  </td>
+                ))}
               </tr>
             ))}
           </tbody>
         </table>
+      </div>
+
+      <div className="px-3 py-1.5 text-[11px] text-gray-400 border-t">
+        ピンをクリックで列を追加／もう一度クリックで外す
       </div>
     </div>
   )
