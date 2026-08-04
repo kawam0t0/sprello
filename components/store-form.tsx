@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import type { Store } from "@/types/database"
-import { geocodeAddress, fetchPopulation } from "@/lib/database-operations"
+import { geocodeAddress } from "@/lib/database-operations"
 
 const RANK_OPTIONS = ["S", "A", "A-", "B", "B-", "C", "D"]
 const STATUS_OPTIONS = ["検討中", "計画中", "オープン", "閉店", "見送り"]
@@ -63,32 +63,10 @@ interface Props {
 
 export function StoreForm({ store, open, onOpenChange, onSubmit, submitting }: Props) {
   const [v, setV] = useState<Partial<Store>>({})
-  const [fetchingPop, setFetchingPop] = useState(false)
 
   useEffect(() => {
     if (store) setV(store)
   }, [store])
-
-  const autoPopulation = async () => {
-    if (v.latitude == null || v.longitude == null) {
-      alert("緯度経度が無いため取得できません（住所を保存してピンが立ってから実行してください）")
-      return
-    }
-    setFetchingPop(true)
-    try {
-      const data = await fetchPopulation(v.latitude, v.longitude)
-      if (data && data.pop_5km != null) {
-        set({ pop_1km: data.pop_1km, pop_2km: data.pop_2km, pop_5km: data.pop_5km })
-      } else {
-        alert(
-          "人口の取得に失敗しました。診断情報:\n\n" +
-            JSON.stringify(data?.diag ?? data ?? {}, null, 2),
-        )
-      }
-    } finally {
-      setFetchingPop(false)
-    }
-  }
 
   const set = (patch: Partial<Store>) => setV((prev) => ({ ...prev, ...patch }))
 
@@ -195,12 +173,7 @@ export function StoreForm({ store, open, onOpenChange, onSubmit, submitting }: P
           </section>
 
           <section className="space-y-3">
-            <div className="flex items-center justify-between border-b pb-1">
-              <h3 className="text-sm font-semibold text-gray-800">商圏人口（同心円・住基/国勢）</h3>
-              <Button size="sm" variant="outline" onClick={autoPopulation} disabled={fetchingPop}>
-                {fetchingPop ? "取得中..." : "e-Statから取得"}
-              </Button>
-            </div>
+            <h3 className="text-sm font-semibold text-gray-800 border-b pb-1">商圏人口（同心円）</h3>
             <div className="grid grid-cols-3 gap-3">
               <NumField label="1.0km人口" value={v.pop_1km} onChange={(n) => set({ pop_1km: n })} />
               <NumField label="2.0km人口" value={v.pop_2km} onChange={(n) => set({ pop_2km: n })} />
