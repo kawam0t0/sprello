@@ -12,6 +12,25 @@ export async function getStores(): Promise<Store[]> {
   return (data as Store[]) ?? []
 }
 
+// e-Statから半径1/2/5km圏内の人口を取得
+export async function fetchPopulation(
+  lat: number,
+  lng: number,
+): Promise<{ pop_1km: number; pop_2km: number; pop_5km: number } | null> {
+  try {
+    const res = await fetch(`/api/estat/population?lat=${lat}&lng=${lng}`)
+    const data = await res.json()
+    if (data.error || data.pop_5km == null) {
+      console.warn("[fetchPopulation]", data.error, data.diag)
+      return null
+    }
+    return { pop_1km: data.pop_1km, pop_2km: data.pop_2km, pop_5km: data.pop_5km }
+  } catch (e) {
+    console.error("[fetchPopulation] error:", e)
+    return null
+  }
+}
+
 // 自社店舗を更新
 export async function updateStore(id: string, updates: Partial<Store>): Promise<void> {
   const { error } = await supabase
