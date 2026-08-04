@@ -30,7 +30,18 @@ import { StoresView } from "@/components/stores-view"
 import { useBoardData } from "@/hooks/use-board-data"
 import { createCard, updateCard, deleteCard, moveCard, swapCards, getCardCount, createProject, geocodeAddress } from "@/lib/database-operations"
 import { CATEGORY_COLORS, PROJECT_CATEGORIES, normalizeCategory } from "@/types/database"
+import { resolveLatLngFromUrl } from "@/lib/maps-url"
 import type { Card as CardType, ProjectCategory } from "@/types/database"
+
+// ヨミの並び順（Aヨミ→Bヨミ→Cヨミ→未確定→完了→その他）
+function yomiRank(title: string): number {
+  if (title.includes("Aヨミ")) return 1
+  if (title.includes("Bヨミ")) return 2
+  if (title.includes("Cヨミ")) return 3
+  if (title.includes("未確定")) return 4
+  if (title.includes("完了")) return 5
+  return 9
+}
 
 export default function Home() {
   // Supabaseからデータを取得
@@ -145,10 +156,19 @@ export default function Home() {
 
   const handleUpdateCard = async (updatedCard: CardType) => {
     try {
-      // 住所があって緯度経度が無い場合はジオコーディングして補完
+      // ピン座標：候補地URL（GoogleマップURL）を最優先。無ければ住所からジオコーディング。
       let lat = updatedCard.lat ?? null
       let lng = updatedCard.lng ?? null
-      if (updatedCard.address && (lat == null || lng == null)) {
+      let resolved = false
+      if (updatedCard.candidate_url) {
+        const r = await resolveLatLngFromUrl(updatedCard.candidate_url)
+        if (r) {
+          lat = r.lat
+          lng = r.lng
+          resolved = true
+        }
+      }
+      if (!resolved && updatedCard.address && (lat == null || lng == null)) {
         const geo = await geocodeAddress(updatedCard.address)
         lat = geo.lat
         lng = geo.lng
@@ -425,10 +445,16 @@ export default function Home() {
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
               {board.lists
                 .filter((l) => yomiFilter === "all" || l.id === yomiFilter)
-                .flatMap((l) => l.cards)
-                .slice()
-                .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
-                .map((card) => (
+                .flatMap((l) => l.cards.map((c) => ({ card: c, listTitle: l.title })))
+                .sort((a, b) => {
+                  const yr = yomiRank(a.listTitle) - yomiRank(b.listTitle)
+                  if (yr !== 0) return yr
+                  // 同じヨミ内はOPEN日が近い順（未設定は末尾）
+                  const ao = a.card.open_date ? new Date(a.card.open_date).getTime() : Infinity
+                  const bo = b.card.open_date ? new Date(b.card.open_date).getTime() : Infinity
+                  return ao - bo
+                })
+                .map(({ card }) => (
                   <ProjectCard
                     key={card.id}
                     card={card}
@@ -740,56 +766,32 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* Candidate URLs */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-semibold text-gray-800">候補地情報</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="candidateUrl">候補地URL 1</Label>
-                    <Input
-                      id="candidateUrl"
-                      type="url"
-                      placeholder="https://example.com"
-                      value={selectedCard.candidate_url}
-                      onChange={(e) => setSelectedCard({ ...selectedCard, candidate_url: e.target.value })}
-                    />
-                    {/* 候補地URL 1の下に */}
-                    {selectedCard.candidate_url && (
-                      <div className="mt-1">
-                        <button
-                          type="button"
-                          onClick={() => window.open(selectedCard.candidate_url, '_blank', 'noopener,noreferrer')}
-                          className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          リンクを開く
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <Label htmlFor="candidateUrl2">候補地URL 2</Label>
-                    <Input
-                      id="candidateUrl2"
-                      type="url"
-                      placeholder="https://example.com"
-                      value={selectedCard.candidate_url2}
-                      onChange={(e) => setSelectedCard({ ...selectedCard, candidate_url2: e.target.value })}
-                    />
-                    {/* 候補地URL 2の下に */}
-                    {selectedCard.candidate_url2 && (
-                      <div className="mt-1">
-                        <button
-                          type="button"
-                          onClick={() => window.open(selectedCard.candidate_url2, '_blank', 'noopener,noreferrer')}
-                          className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1"
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                          リンクを開く
-                        </button>
-                      </div>
-                    )}
-                  </div>
+              {/* Candidate URL（1本のみ・地図ピンの座標元） */}
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold text-gray-800">候補地URL</h3>
+                <div>
+                  <Label htmlFor="candidateUrl" className="text-xs text-gray-600">
+                    GoogleマップのURL（住所未確定でもピンを立てられます。保存時に座標を取得）
+                  </Label>
+                  <Input
+                    id="candidateUrl"
+                    type="url"
+                    placeholder="https://maps.app.goo.gl/... または https://www.google.com/maps/...@36.37,139.08..."
+                    value={selectedCard.candidate_url}
+                    onChange={(e) => setSelectedCard({ ...selectedCard, candidate_url: e.target.value })}
+                  />
+                  {selectedCard.candidate_url && (
+                    <div className="mt-1">
+                      <button
+                        type="button"
+                        onClick={() => window.open(selectedCard.candidate_url, "_blank", "noopener,noreferrer")}
+                        className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1"
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        リンクを開く
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
 

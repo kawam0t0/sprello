@@ -36,6 +36,7 @@ const EMPTY: ProjectFormValues = {
   open_date: null,
   prefecture: "",
   address: "",
+  candidate_url: "",
   rank: "",
   status: "",
   traffic_12h: null,
@@ -207,7 +208,13 @@ export function ProjectForm({ open, onOpenChange, onSubmit, initial, submitting 
               </div>
             </div>
             <TextField
-              label="住所（地図のピン位置に使われます）"
+              label="候補地URL（GoogleマップURL・住所未確定でもピンを立てられます／最優先）"
+              value={v.candidate_url ?? ""}
+              onChange={(s) => set({ candidate_url: s })}
+              placeholder="https://maps.app.goo.gl/... または https://www.google.com/maps/...@36.37,139.08..."
+            />
+            <TextField
+              label="住所（任意・候補地URLが無い場合のピン位置に使用）"
               value={v.address ?? ""}
               onChange={(s) => set({ address: s })}
               placeholder="群馬県太田市新田野井町3-1"

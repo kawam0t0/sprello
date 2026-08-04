@@ -1,5 +1,6 @@
 import { supabase } from "./supabase"
 import type { Card, Store } from "@/types/database"
+import { resolveLatLngFromUrl } from "./maps-url"
 
 // 自社店舗マスターを取得
 export async function getStores(): Promise<Store[]> {
@@ -119,13 +120,22 @@ export async function createProject(
   fields: Partial<Card> & { title: string },
   position: number,
 ): Promise<Card> {
-  // 住所があればジオコーディングして緯度経度を補完
+  // ピン座標の決定：候補地URL（GoogleマップURL）を最優先。無ければ住所からジオコーディング。
   let lat = fields.lat ?? null
   let lng = fields.lng ?? null
-  if ((lat == null || lng == null) && fields.address) {
-    const geo = await geocodeAddress(fields.address)
-    lat = geo.lat
-    lng = geo.lng
+  if (lat == null || lng == null) {
+    if (fields.candidate_url) {
+      const r = await resolveLatLngFromUrl(fields.candidate_url)
+      if (r) {
+        lat = r.lat
+        lng = r.lng
+      }
+    }
+    if ((lat == null || lng == null) && fields.address) {
+      const geo = await geocodeAddress(fields.address)
+      lat = geo.lat
+      lng = geo.lng
+    }
   }
 
   // Trelloリスト作成（失敗は握りつぶす）

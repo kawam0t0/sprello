@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { X, Pencil } from "lucide-react"
+import { X, Pencil, ChevronDown, ChevronUp } from "lucide-react"
 import { APIProvider, Map, useMap } from "@vis.gl/react-google-maps"
 import { CATEGORY_COLORS, PROJECT_CATEGORIES, normalizeCategory } from "@/types/database"
 import type { Card, MapItem, ProjectCategory, Store } from "@/types/database"
@@ -414,16 +414,32 @@ function ComparePanel({
   onEdit: (item: MapItem) => void
   onClear: () => void
 }) {
+  const [collapsed, setCollapsed] = useState(false)
+  // 下部ドックにして地図上部を残す＝ピンを続けて選択できる
   return (
-    <div className="absolute top-3 left-3 right-3 z-10 max-h-[calc(100%-24px)] bg-white rounded-lg shadow-2xl flex flex-col overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2.5 bg-slate-800 text-white">
-        <div className="font-bold text-sm">施設詳細（比較 {items.length} 件）</div>
-        <button onClick={onClear} className="text-xs bg-white/15 hover:bg-white/25 px-2 py-1 rounded">
-          全てクリア
-        </button>
+    <div className="absolute left-0 right-0 bottom-0 z-10 bg-white shadow-2xl flex flex-col border-t border-gray-200">
+      <div className="flex items-center justify-between px-4 py-2 bg-slate-800 text-white">
+        <div className="font-bold text-sm">
+          施設詳細（比較 {items.length} 件）
+          <span className="ml-2 font-normal text-white/60 text-xs">
+            地図のピンをクリックで追加／もう一度で外す
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button onClick={onClear} className="text-xs bg-white/15 hover:bg-white/25 px-2 py-1 rounded">
+            全てクリア
+          </button>
+          <button
+            onClick={() => setCollapsed((c) => !c)}
+            className="text-white/80 hover:text-white p-1"
+            title={collapsed ? "開く" : "たたむ"}
+          >
+            {collapsed ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+        </div>
       </div>
 
-      <div className="overflow-auto">
+      <div className={`overflow-auto ${collapsed ? "hidden" : ""}`} style={{ maxHeight: "42vh" }}>
         <table className="border-collapse text-sm">
           <thead>
             <tr>

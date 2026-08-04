@@ -104,7 +104,7 @@ export function ProjectCard({ card, onOpen, onDelete }: Props) {
       </div>
 
       {/* リンク（下部固定） */}
-      {(card.candidate_url || card.candidate_url2 || card.company_url) && (
+      {(card.candidate_url || card.company_url) && (
         <div className="mt-2 flex flex-wrap gap-1 pt-1 border-t border-gray-100">
           {card.company_url && (
             <button
@@ -127,19 +127,7 @@ export function ProjectCard({ card, onOpen, onDelete }: Props) {
               className="bg-teal-100 text-teal-800 text-xs px-2 py-0.5 rounded-full hover:bg-teal-200 flex items-center gap-1"
             >
               <ExternalLink className="w-3 h-3" />
-              候補地1
-            </button>
-          )}
-          {card.candidate_url2 && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation()
-                window.open(card.candidate_url2, "_blank", "noopener,noreferrer")
-              }}
-              className="bg-cyan-100 text-cyan-800 text-xs px-2 py-0.5 rounded-full hover:bg-cyan-200 flex items-center gap-1"
-            >
-              <ExternalLink className="w-3 h-3" />
-              候補地2
+              候補地
             </button>
           )}
         </div>
