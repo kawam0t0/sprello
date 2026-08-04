@@ -95,6 +95,14 @@ export async function GET(request: Request) {
     diag.status = status
     diag.errMsg = errMsg
 
+    // e-Statがエラー（STATUS != 0）を返した場合は正直にエラーとして返す
+    if (status != null && Number(status) !== 0) {
+      return NextResponse.json({
+        error: `e-Stat エラー(STATUS ${status}): ${errMsg ?? ""}`,
+        diag,
+      })
+    }
+
     const values: any[] = data?.GET_STATS_DATA?.STATISTICAL_DATA?.DATA_INF?.VALUE ?? []
     diag.valueSample = values.slice(0, 5)
     diag.cats = Array.from(new Set(values.map((v) => v?.["@cat01"]).filter(Boolean))).slice(0, 10)
