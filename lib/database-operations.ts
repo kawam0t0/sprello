@@ -31,42 +31,6 @@ export async function fetchPopulation(
   }
 }
 
-// 国交省 道路データプラットフォーム(JARTIC常時観測)から最寄り観測点の日中12時間交通量を取得
-export async function fetchTraffic(
-  lat: number,
-  lng: number,
-): Promise<
-  | {
-      traffic_12h: number
-      point_name: string | null
-      distance_m: number
-      date: string
-    }
-  | { found: false; message: string }
-  | null
-> {
-  try {
-    const res = await fetch(`/api/traffic?lat=${lat}&lng=${lng}`)
-    const data = await res.json()
-    if (data.error) {
-      console.warn("[fetchTraffic]", data.error)
-      return null
-    }
-    if (data.found) {
-      return {
-        traffic_12h: data.traffic_12h,
-        point_name: data.point_name ?? null,
-        distance_m: data.distance_m,
-        date: data.date,
-      }
-    }
-    return { found: false, message: data.message ?? "見つかりませんでした" }
-  } catch (e) {
-    console.error("[fetchTraffic] error:", e)
-    return null
-  }
-}
-
 // 完了したプロジェクト(カード)を自社店舗(stores)へ反映（store_codeで重複防止のupsert）
 export async function upsertStoreFromCard(card: Card): Promise<void> {
   const code = `PJ-${card.id}`
