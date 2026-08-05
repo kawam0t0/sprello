@@ -28,7 +28,7 @@ import { StoresView } from "@/components/stores-view"
 
 // Supabase関連のimport
 import { useBoardData } from "@/hooks/use-board-data"
-import { createCard, updateCard, deleteCard, moveCard, swapCards, getCardCount, createProject, geocodeAddress, upsertStoreFromCard } from "@/lib/database-operations"
+import { createCard, updateCard, deleteCard, moveCard, swapCards, getCardCount, createProject, geocodeAddress, upsertStoreFromCard, fetchPopulation } from "@/lib/database-operations"
 import { CATEGORY_COLORS, PROJECT_CATEGORIES, normalizeCategory } from "@/types/database"
 import { resolveLatLngFromUrl } from "@/lib/maps-url"
 import type { Card as CardType, ProjectCategory } from "@/types/database"
@@ -55,6 +55,7 @@ export default function Home() {
   // 新規プロジェクト作成フォーム
   const [projectFormOpen, setProjectFormOpen] = useState(false)
   const [creatingProject, setCreatingProject] = useState(false)
+  const [fetchingCardPop, setFetchingCardPop] = useState(false)
 
   const [statusOptions, setStatusOptions] = useState(["見積待ち", "融資待ち", "補助金待ち", "社内稟議待ち"])
   const [newStatusOption, setNewStatusOption] = useState("")
@@ -173,6 +174,18 @@ export default function Home() {
         lat = geo.lat
         lng = geo.lng
       }
+      // 商圏人口の自動入力（座標が取れて、人口が未入力のときだけ）
+      let pop_1km = updatedCard.pop_1km ?? null
+      let pop_2km = updatedCard.pop_2km ?? null
+      let pop_5km = updatedCard.pop_5km ?? null
+      if (lat != null && lng != null && pop_1km == null) {
+        const pop = await fetchPopulation(lat, lng)
+        if (pop) {
+          pop_1km = pop.pop_1km
+          pop_2km = pop.pop_2km
+          pop_5km = pop.pop_5km
+        }
+      }
       await updateCard(updatedCard.id, {
         title: updatedCard.title,
         status: updatedCard.status,
@@ -203,16 +216,16 @@ export default function Home() {
         size_tsubo: updatedCard.size_tsubo,
         car_capacity: updatedCard.car_capacity,
         wipe_spaces: updatedCard.wipe_spaces,
-        pop_1km: updatedCard.pop_1km,
-        pop_2km: updatedCard.pop_2km,
-        pop_5km: updatedCard.pop_5km,
+        pop_1km,
+        pop_2km,
+        pop_5km,
         lat,
         lng,
       })
       // 完了リストのプロジェクトを編集した場合は自社店舗(stores)も同期
       const listTitle = board.lists.find((l) => l.id === updatedCard.list_id)?.title ?? ""
       if (listTitle.includes("完了")) {
-        await upsertStoreFromCard({ ...updatedCard, lat, lng })
+        await upsertStoreFromCard({ ...updatedCard, lat, lng, pop_1km, pop_2km, pop_5km })
       }
       refetch() // データを再取得
     } catch (error) {
@@ -596,6 +609,38 @@ export default function Home() {
                       }
                     />
                   </div>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-gray-500">商圏人口（国勢2020・保存時に自動入力）</span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={fetchingCardPop}
+                    onClick={async () => {
+                      if (selectedCard.lat == null || selectedCard.lng == null) {
+                        alert("先に候補地URLか住所を入れて保存し、ピンを立ててから取得してください")
+                        return
+                      }
+                      setFetchingCardPop(true)
+                      try {
+                        const pop = await fetchPopulation(selectedCard.lat, selectedCard.lng)
+                        if (pop) {
+                          setSelectedCard({
+                            ...selectedCard,
+                            pop_1km: pop.pop_1km,
+                            pop_2km: pop.pop_2km,
+                            pop_5km: pop.pop_5km,
+                          })
+                        } else {
+                          alert("この地点の人口データが見つかりませんでした（対象県のCSV未取込かも）")
+                        }
+                      } finally {
+                        setFetchingCardPop(false)
+                      }
+                    }}
+                  >
+                    {fetchingCardPop ? "取得中..." : "人口を取得"}
+                  </Button>
                 </div>
                 <div className="grid grid-cols-3 gap-3">
                   <div>

@@ -12,19 +12,22 @@ export async function getStores(): Promise<Store[]> {
   return (data as Store[]) ?? []
 }
 
-// e-Statから半径1/2/5km圏内の人口を取得（診断情報も一緒に返す）
+// メッシュ人口(国勢2020)から半径1/2/5km圏の人口を取得
 export async function fetchPopulation(
   lat: number,
   lng: number,
-): Promise<any> {
+): Promise<{ pop_1km: number; pop_2km: number; pop_5km: number } | null> {
   try {
-    const res = await fetch(`/api/estat/population?lat=${lat}&lng=${lng}`)
+    const res = await fetch(`/api/population?lat=${lat}&lng=${lng}`)
     const data = await res.json()
-    console.log("[fetchPopulation]", data)
-    return data
+    if (data.error || data.pop_5km == null) {
+      console.warn("[fetchPopulation]", data.error)
+      return null
+    }
+    return { pop_1km: data.pop_1km, pop_2km: data.pop_2km, pop_5km: data.pop_5km }
   } catch (e) {
     console.error("[fetchPopulation] error:", e)
-    return { error: e instanceof Error ? e.message : String(e) }
+    return null
   }
 }
 
@@ -191,6 +194,19 @@ export async function createProject(
     }
   }
 
+  // 商圏人口の自動入力（座標が取れて、人口が未入力のときだけ）
+  let pop_1km = fields.pop_1km ?? null
+  let pop_2km = fields.pop_2km ?? null
+  let pop_5km = fields.pop_5km ?? null
+  if (lat != null && lng != null && pop_1km == null) {
+    const pop = await fetchPopulation(lat, lng)
+    if (pop) {
+      pop_1km = pop.pop_1km
+      pop_2km = pop.pop_2km
+      pop_5km = pop.pop_5km
+    }
+  }
+
   // Trelloリスト作成（失敗は握りつぶす）
   let trelloData: any = null
   try {
@@ -238,9 +254,9 @@ export async function createProject(
       size_tsubo: fields.size_tsubo ?? null,
       car_capacity: fields.car_capacity ?? null,
       wipe_spaces: fields.wipe_spaces ?? null,
-      pop_1km: fields.pop_1km ?? null,
-      pop_2km: fields.pop_2km ?? null,
-      pop_5km: fields.pop_5km ?? null,
+      pop_1km,
+      pop_2km,
+      pop_5km,
       lat,
       lng,
       trello_list_id: trelloData?.trelloListId || null,
