@@ -66,6 +66,7 @@ export interface MapItem {
   kind: "store" | "project"
   name: string
   category: ProjectCategory
+  stage?: string | null // ヨミ（Aヨミ/Bヨミ/完了/未確定 等）。storeはOPEN扱い
   lat: number
   lng: number
   address?: string | null

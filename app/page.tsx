@@ -488,7 +488,7 @@ export default function Home() {
           </div>
         ) : viewMode === "map" ? (
           <div className="bg-white" style={{ height: "calc(100vh - 72px)" }}>
-            <MapView cards={board.lists.flatMap((l) => l.cards)} />
+            <MapView cards={board.lists.flatMap((l) => l.cards.map((c) => ({ ...c, listTitle: l.title })))} />
           </div>
         ) : (
           <StoresView />

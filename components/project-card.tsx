@@ -11,29 +11,52 @@ interface Props {
   onDelete: (cardId: string) => void
 }
 
-// 高さ統一のプロジェクトカード
+// 出店データ（地図・商圏）の入力チェック項目
+function missingFields(card: CardType): string[] {
+  const checks: [string, boolean][] = [
+    ["ランク", !card.rank],
+    ["立地", !card.location_type],
+    ["交通量", card.traffic_12h == null],
+    ["周辺充実度", card.surrounding_score == null],
+    ["通過速度", card.passing_speed == null],
+    ["認知度", card.awareness == null],
+    ["世帯年収", card.household_income == null],
+    ["広さ", card.size_tsubo == null],
+    ["台数", card.car_capacity == null],
+    ["拭上げ", card.wipe_spaces == null],
+    ["商圏人口", card.pop_1km == null],
+  ]
+  return checks.filter(([, empty]) => empty).map(([label]) => label)
+}
+
 export function ProjectCard({ card, onOpen, onDelete }: Props) {
   const fmtDate = (d: string) =>
     new Date(d).toLocaleDateString("ja-JP", { year: "numeric", month: "numeric", day: "numeric" })
+  const brand = normalizeCategory(card.category)
+  const brandColor = CATEGORY_COLORS[brand]
+  const missing = missingFields(card)
 
   return (
     <Card
-      className="h-[240px] p-3 bg-white shadow-sm hover:shadow-md cursor-pointer transition-all duration-200 flex flex-col"
+      className="h-[240px] bg-white shadow-sm hover:shadow-md cursor-pointer transition-all duration-200 flex flex-col overflow-hidden"
       onClick={() => onOpen(card)}
     >
-      {/* ヘッダー */}
-      <div className="flex items-start justify-between">
-        <p className="text-sm font-semibold text-gray-800 flex-1 line-clamp-2">{card.title}</p>
-        <div className="flex items-center gap-1 ml-2 flex-shrink-0">
+      {/* ブランド帯（はっきり表示） */}
+      <div
+        className="flex items-center justify-between px-3 py-1.5 text-white"
+        style={{ backgroundColor: brandColor }}
+      >
+        <span className="text-sm font-bold tracking-wide truncate">{brand}</span>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
           <Edit
-            className="w-3.5 h-3.5 text-gray-400 cursor-pointer hover:text-gray-600"
+            className="w-3.5 h-3.5 opacity-80 hover:opacity-100"
             onClick={(e) => {
               e.stopPropagation()
               onOpen(card)
             }}
           />
           <Trash2
-            className="w-3.5 h-3.5 text-red-400 cursor-pointer hover:text-red-600"
+            className="w-3.5 h-3.5 opacity-80 hover:opacity-100"
             onClick={(e) => {
               e.stopPropagation()
               onDelete(card.id)
@@ -42,21 +65,26 @@ export function ProjectCard({ card, onOpen, onDelete }: Props) {
         </div>
       </div>
 
-      {/* バッジ類・詳細（あふれたらスクロール） */}
-      <div className="mt-1.5 flex-1 overflow-y-auto space-y-1 pr-0.5">
+      <div className="p-3 flex-1 overflow-y-auto space-y-1.5">
+        {/* タイトル */}
+        <p className="text-sm font-semibold text-gray-800 line-clamp-2">{card.title}</p>
+
         <div className="flex flex-wrap items-center gap-1.5">
-          <span
-            className="text-[10px] px-1.5 py-0.5 rounded-full text-white"
-            style={{ backgroundColor: CATEGORY_COLORS[normalizeCategory(card.category)] }}
-          >
-            {normalizeCategory(card.category)}
-          </span>
           {card.rank && (
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-800 font-semibold">
               ランク{card.rank}
             </span>
           )}
-          {card.brand && <span className="text-[10px] text-gray-500">{card.brand}</span>}
+          {card.open_date && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-800">
+              OPEN {fmtDate(card.open_date)}
+            </span>
+          )}
+          {card.start_date && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-100 text-red-800">
+              着工 {fmtDate(card.start_date)}
+            </span>
+          )}
         </div>
 
         {card.address && (
@@ -66,7 +94,7 @@ export function ProjectCard({ card, onOpen, onDelete }: Props) {
           </div>
         )}
 
-        {(card.pop_1km != null || card.pop_2km != null || card.pop_5km != null) && (
+        {card.pop_1km != null && (
           <div className="text-[10px] text-gray-400">
             商圏 1/2/5km:{" "}
             {[card.pop_1km, card.pop_2km, card.pop_5km]
@@ -75,37 +103,33 @@ export function ProjectCard({ card, onOpen, onDelete }: Props) {
           </div>
         )}
 
-        {card.status && (
-          <div>
-            <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full">{card.status}</span>
+        {/* 出店データの未入力表示 */}
+        {missing.length > 0 ? (
+          <div className="pt-1 border-t border-gray-100">
+            <div className="text-[10px] text-rose-500 font-medium mb-0.5">
+              出店データ未入力（{missing.length}）
+            </div>
+            <div className="flex flex-wrap gap-1">
+              {missing.map((m) => (
+                <span
+                  key={m}
+                  className="text-[10px] px-1.5 py-0.5 rounded bg-rose-50 text-rose-600 border border-rose-200"
+                >
+                  {m}
+                </span>
+              ))}
+            </div>
           </div>
-        )}
-        {card.open_date && (
-          <div>
-            <span className="bg-green-100 text-green-800 text-xs px-2 py-0.5 rounded-full">
-              OPEN: {fmtDate(card.open_date)}予定
-            </span>
-          </div>
-        )}
-        {card.start_date && (
-          <div>
-            <span className="bg-red-100 text-red-800 text-xs px-2 py-0.5 rounded-full">
-              着工: {fmtDate(card.start_date)}予定
-            </span>
-          </div>
-        )}
-        {card.company_name && (
-          <div>
-            <span className="bg-purple-100 text-purple-800 text-xs px-2 py-0.5 rounded-full">
-              {card.company_name}
-            </span>
+        ) : (
+          <div className="pt-1 border-t border-gray-100 text-[10px] text-emerald-600 font-medium">
+            ✓ 出店データ入力済み
           </div>
         )}
       </div>
 
       {/* リンク（下部固定） */}
       {(card.candidate_url || card.company_url) && (
-        <div className="mt-2 flex flex-wrap gap-1 pt-1 border-t border-gray-100">
+        <div className="px-3 py-1.5 flex flex-wrap gap-1 border-t border-gray-100">
           {card.company_url && (
             <button
               onClick={(e) => {

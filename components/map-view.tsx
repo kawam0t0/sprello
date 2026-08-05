@@ -16,7 +16,28 @@ const RADII: { km: number; label: string }[] = [
 ]
 
 interface MapViewProps {
-  cards: Card[]
+  cards: (Card & { listTitle?: string })[]
+}
+
+// ステージ（OPEN/Aヨミ/Bヨミ/Cヨミ/未確定）の色分け
+const STAGE_ORDER = ["OPEN", "Aヨミ", "Bヨミ", "Cヨミ", "未確定"]
+const STAGE_COLORS: Record<string, string> = {
+  OPEN: "#16a34a",
+  Aヨミ: "#2563eb",
+  Bヨミ: "#d97706",
+  Cヨミ: "#ea580c",
+  未確定: "#6b7280",
+  その他: "#6b7280",
+}
+function stageOf(item: MapItem): { label: string; color: string } {
+  if (item.kind === "store") return { label: "OPEN", color: STAGE_COLORS.OPEN }
+  const t = item.stage || ""
+  if (t.includes("完了")) return { label: "OPEN", color: STAGE_COLORS.OPEN }
+  if (t.includes("Aヨミ")) return { label: "Aヨミ", color: STAGE_COLORS.Aヨミ }
+  if (t.includes("Bヨミ")) return { label: "Bヨミ", color: STAGE_COLORS.Bヨミ }
+  if (t.includes("Cヨミ")) return { label: "Cヨミ", color: STAGE_COLORS.Cヨミ }
+  if (t.includes("未確定")) return { label: "未確定", color: STAGE_COLORS.未確定 }
+  return { label: t || "—", color: STAGE_COLORS.その他 }
 }
 
 function storeToItem(s: Store): MapItem | null {
@@ -53,13 +74,14 @@ function storeToItem(s: Store): MapItem | null {
   }
 }
 
-function cardToItem(c: Card): MapItem | null {
+function cardToItem(c: Card & { listTitle?: string }): MapItem | null {
   if (typeof c.lat !== "number" || typeof c.lng !== "number") return null
   return {
     id: `project-${c.id}`,
     kind: "project",
     name: c.store_name || c.title,
     category: normalizeCategory(c.category),
+    stage: c.listTitle ?? null,
     lat: c.lat,
     lng: c.lng,
     address: c.address,
@@ -258,6 +280,23 @@ export function MapView({ cards }: MapViewProps) {
                 </label>
               </div>
 
+              <div>
+                <div className="text-xs font-semibold text-gray-500 mb-2">ステージ（ピンのラベル）</div>
+                <div className="grid grid-cols-2 gap-1">
+                  {STAGE_ORDER.map((s) => (
+                    <div key={s} className="flex items-center gap-1.5 text-xs">
+                      <span
+                        className="inline-block px-1.5 py-0.5 rounded text-white text-[10px] font-bold"
+                        style={{ backgroundColor: STAGE_COLORS[s] }}
+                      >
+                        {s}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+                <div className="text-[10px] text-gray-400 mt-1">枠の色＝ブランド、ラベル＝進捗</div>
+              </div>
+
               <div className="text-[11px] text-gray-400 border-t pt-2">
                 ピン {visibleItems.length} 件（自社 {stores.filter((s) => s.latitude != null).length} / PJ{" "}
                 {cards.filter((c) => c.lat != null).length}）
@@ -288,19 +327,32 @@ function escapeXml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
 }
 
-function buildPin(label: string, color: string, selected: boolean): { url: string; w: number; h: number } {
-  const textW = Math.max(label.length * 13, 20)
-  const w = Math.ceil(30 + textW + 12)
+function buildPin(
+  name: string,
+  brandColor: string,
+  stageLabel: string,
+  stageColor: string,
+  selected: boolean,
+): { url: string; w: number; h: number } {
+  const chipTextW = stageLabel.length * 11 + 12 // ステージ文字（OPEN/Aヨミ等）
+  const chipX = 8
+  const chipW = chipTextW
+  const nameX = chipX + chipW + 7
+  const nameW = Math.max(name.length * 13, 16)
+  const w = Math.ceil(nameX + nameW + 10)
   const h = 40
-  const stroke = selected ? "#111827" : color
-  const sw = selected ? 3 : 1.5
+  const stroke = selected ? "#111827" : brandColor
+  const sw = selected ? 3 : 2
   const cx = w / 2
   const svg =
     `<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${h}' viewBox='0 0 ${w} ${h}'>` +
     `<rect x='1.5' y='1.5' rx='14' ry='14' width='${w - 3}' height='28' fill='white' stroke='${stroke}' stroke-width='${sw}'/>` +
-    `<circle cx='18' cy='15.5' r='7' fill='${color}'/>` +
-    `<circle cx='18' cy='15.5' r='2.6' fill='white'/>` +
-    `<text x='32' y='20.5' font-family='sans-serif' font-size='13' font-weight='700' fill='#1f2937'>${escapeXml(label)}</text>` +
+    // ステージチップ
+    `<rect x='${chipX}' y='5' rx='6' ry='6' width='${chipW}' height='19' fill='${stageColor}'/>` +
+    `<text x='${chipX + chipW / 2}' y='18.5' text-anchor='middle' font-family='sans-serif' font-size='11' font-weight='700' fill='white'>${escapeXml(stageLabel)}</text>` +
+    // 店名
+    `<text x='${nameX}' y='19' font-family='sans-serif' font-size='13' font-weight='700' fill='#1f2937'>${escapeXml(name)}</text>` +
+    // 吹き出し（ブランド色枠）
     `<path d='M ${cx - 7},29 L ${cx + 7},29 L ${cx},39 Z' fill='white' stroke='${stroke}' stroke-width='${sw}'/>` +
     `<path d='M ${cx - 6},30 L ${cx + 6},30 L ${cx},38 Z' fill='white'/>` +
     `</svg>`
@@ -332,7 +384,8 @@ function MapOverlays({
     items.forEach((it) => {
       const color = CATEGORY_COLORS[it.category]
       const selected = selectedIds.includes(it.id)
-      const pin = buildPin(shortName(it.name), color, selected)
+      const st = stageOf(it)
+      const pin = buildPin(shortName(it.name), color, st.label, st.color, selected)
       const marker = new google.maps.Marker({
         position: { lat: it.lat, lng: it.lng },
         map,
