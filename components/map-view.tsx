@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
-import { X, Pencil, ChevronDown, ChevronUp } from "lucide-react"
+import { X, Pencil, Menu } from "lucide-react"
 import { APIProvider, Map, useMap } from "@vis.gl/react-google-maps"
 import { CATEGORY_COLORS, PROJECT_CATEGORIES, normalizeCategory } from "@/types/database"
 import type { Card, MapItem, ProjectCategory, Store } from "@/types/database"
@@ -101,6 +101,7 @@ export function MapView({ cards }: MapViewProps) {
   const [activeRadii, setActiveRadii] = useState<Record<number, boolean>>({ 1: false, 2: true, 5: false })
   const [circleAll, setCircleAll] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
+  const [filterOpen, setFilterOpen] = useState(false)
 
   const [editStore, setEditStore] = useState<Store | null>(null)
   const [saving, setSaving] = useState(false)
@@ -158,68 +159,33 @@ export function MapView({ cards }: MapViewProps) {
   }
 
   return (
-    <div className="h-full flex">
-      {/* 左：フィルタパネル */}
-      <div className="w-60 shrink-0 border-r bg-white p-4 overflow-y-auto space-y-5">
-        <div>
-          <div className="text-xs font-semibold text-gray-500 mb-2">カテゴリ表示</div>
-          <div className="space-y-1.5">
-            {PROJECT_CATEGORIES.map((cat) => {
-              const count = allItems.filter((it) => it.category === cat).length
-              return (
-                <label key={cat} className="flex items-center gap-2 cursor-pointer text-sm">
-                  <input
-                    type="checkbox"
-                    checked={visibleCats[cat]}
-                    onChange={(e) => setVisibleCats((p) => ({ ...p, [cat]: e.target.checked }))}
-                  />
-                  <span className="inline-block w-3 h-3 rounded-full" style={{ backgroundColor: CATEGORY_COLORS[cat] }} />
-                  <span className="flex-1">{cat}</span>
-                  <span className="text-gray-400 text-xs">{count}</span>
-                </label>
-              )
-            })}
+    <div className="h-full relative flex">
+      {/* 左：選択したピンの詳細を縦積み（細身） */}
+      {selectedItems.length > 0 && (
+        <div className="w-72 shrink-0 border-r bg-gray-50 overflow-y-auto">
+          <div className="flex items-center justify-between px-3 py-2 bg-slate-800 text-white sticky top-0 z-10">
+            <span className="text-sm font-bold">選択中 {selectedItems.length} 件</span>
+            <button
+              onClick={() => setSelectedIds([])}
+              className="text-xs bg-white/15 hover:bg-white/25 px-2 py-1 rounded"
+            >
+              全てクリア
+            </button>
           </div>
-        </div>
-
-        <div>
-          <div className="text-xs font-semibold text-gray-500 mb-2">同心円（商圏）</div>
-          <div className="flex gap-2 mb-2">
-            {RADII.map((r) => (
-              <button
-                key={r.km}
-                onClick={() => setActiveRadii((p) => ({ ...p, [r.km]: !p[r.km] }))}
-                className={`px-2 py-1 rounded text-xs border ${
-                  activeRadii[r.km]
-                    ? "bg-yellow-500 text-white border-yellow-500"
-                    : "bg-white text-gray-600 border-gray-300"
-                }`}
-              >
-                {r.label}
-              </button>
+          <div className="p-2 space-y-2">
+            {selectedItems.map((it) => (
+              <DetailCard
+                key={it.id}
+                item={it}
+                onRemove={() => setSelectedIds((prev) => prev.filter((x) => x !== it.id))}
+                onEdit={it.kind === "store" ? () => handleEditItem(it) : undefined}
+              />
             ))}
           </div>
-          <label className="flex items-center gap-2 cursor-pointer text-sm">
-            <input type="checkbox" checked={circleAll} onChange={(e) => setCircleAll(e.target.checked)} />
-            全店舗に表示
-          </label>
-          {!circleAll && <p className="text-xs text-gray-400 mt-1">選択中の店舗のみ表示</p>}
         </div>
+      )}
 
-        <div className="text-xs text-gray-400">
-          地図上ピン: {visibleItems.length} 件<br />
-          （自社店舗 {stores.filter((s) => s.latitude != null).length} 件 / プロジェクト{" "}
-          {cards.filter((c) => c.lat != null).length} 件）
-          {selectedItems.length > 0 && (
-            <>
-              <br />
-              比較中: {selectedItems.length} 件
-            </>
-          )}
-        </div>
-      </div>
-
-      {/* 右：地図＋比較パネル */}
+      {/* 地図（メイン） */}
       <div className="flex-1 relative">
         <APIProvider apiKey={apiKey}>
           <Map
@@ -239,14 +205,71 @@ export function MapView({ cards }: MapViewProps) {
           </Map>
         </APIProvider>
 
-        {selectedItems.length > 0 && (
-          <ComparePanel
-            items={selectedItems}
-            onRemove={(id) => setSelectedIds((prev) => prev.filter((x) => x !== id))}
-            onEdit={handleEditItem}
-            onClear={() => setSelectedIds([])}
-          />
-        )}
+        {/* ハンバーガー：カテゴリ表示・同心円 */}
+        <div className="absolute top-3 left-3 z-10">
+          <button
+            onClick={() => setFilterOpen((o) => !o)}
+            className="bg-white shadow-md rounded-md p-2 hover:bg-gray-50 border border-gray-200"
+            title="表示設定"
+          >
+            <Menu className="w-5 h-5 text-gray-700" />
+          </button>
+          {filterOpen && (
+            <div className="mt-2 w-56 bg-white rounded-lg shadow-xl border p-3 space-y-4">
+              <div>
+                <div className="text-xs font-semibold text-gray-500 mb-2">カテゴリ表示</div>
+                <div className="space-y-1.5">
+                  {PROJECT_CATEGORIES.map((cat) => {
+                    const count = allItems.filter((it) => it.category === cat).length
+                    return (
+                      <label key={cat} className="flex items-center gap-2 cursor-pointer text-sm">
+                        <input
+                          type="checkbox"
+                          checked={visibleCats[cat]}
+                          onChange={(e) => setVisibleCats((p) => ({ ...p, [cat]: e.target.checked }))}
+                        />
+                        <span
+                          className="inline-block w-3 h-3 rounded-full"
+                          style={{ backgroundColor: CATEGORY_COLORS[cat] }}
+                        />
+                        <span className="flex-1">{cat}</span>
+                        <span className="text-gray-400 text-xs">{count}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <div className="text-xs font-semibold text-gray-500 mb-2">同心円（商圏）</div>
+                <div className="flex gap-2 mb-2">
+                  {RADII.map((r) => (
+                    <button
+                      key={r.km}
+                      onClick={() => setActiveRadii((p) => ({ ...p, [r.km]: !p[r.km] }))}
+                      className={`px-2 py-1 rounded text-xs border ${
+                        activeRadii[r.km]
+                          ? "bg-[#1b4da0] text-white border-[#1b4da0]"
+                          : "bg-white text-gray-600 border-gray-300"
+                      }`}
+                    >
+                      {r.label}
+                    </button>
+                  ))}
+                </div>
+                <label className="flex items-center gap-2 cursor-pointer text-sm">
+                  <input type="checkbox" checked={circleAll} onChange={(e) => setCircleAll(e.target.checked)} />
+                  全店舗に表示
+                </label>
+              </div>
+
+              <div className="text-[11px] text-gray-400 border-t pt-2">
+                ピン {visibleItems.length} 件（自社 {stores.filter((s) => s.latitude != null).length} / PJ{" "}
+                {cards.filter((c) => c.lat != null).length}）
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       <StoreForm
@@ -403,89 +426,41 @@ const COMPARE_ROWS: { label: string; get: (it: MapItem) => string }[] = (() => {
   ]
 })()
 
-function ComparePanel({
-  items,
+// 選択した1店舗のコンパクト詳細カード（左に縦積み）
+function DetailCard({
+  item,
   onRemove,
   onEdit,
-  onClear,
 }: {
-  items: MapItem[]
-  onRemove: (id: string) => void
-  onEdit: (item: MapItem) => void
-  onClear: () => void
+  item: MapItem
+  onRemove: () => void
+  onEdit?: () => void
 }) {
-  const [collapsed, setCollapsed] = useState(false)
-  // 下部ドックにして地図上部を残す＝ピンを続けて選択できる
   return (
-    <div className="absolute left-0 right-0 bottom-0 z-10 bg-white shadow-2xl flex flex-col border-t border-gray-200">
-      <div className="flex items-center justify-between px-4 py-2 bg-slate-800 text-white">
-        <div className="font-bold text-sm">
-          施設詳細（比較 {items.length} 件）
-          <span className="ml-2 font-normal text-white/60 text-xs">
-            地図のピンをクリックで追加／もう一度で外す
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <button onClick={onClear} className="text-xs bg-white/15 hover:bg-white/25 px-2 py-1 rounded">
-            全てクリア
-          </button>
-          <button
-            onClick={() => setCollapsed((c) => !c)}
-            className="text-white/80 hover:text-white p-1"
-            title={collapsed ? "開く" : "たたむ"}
-          >
-            {collapsed ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+    <div className="bg-white rounded-md shadow border border-gray-200 overflow-hidden">
+      <div
+        className="flex items-center justify-between px-2.5 py-1.5 text-white"
+        style={{ backgroundColor: CATEGORY_COLORS[item.category] }}
+      >
+        <div className="text-xs font-bold truncate">{item.name}</div>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          {onEdit && (
+            <button onClick={onEdit} title="編集" className="hover:bg-white/20 rounded p-0.5">
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
+          )}
+          <button onClick={onRemove} title="外す" className="hover:bg-white/20 rounded p-0.5">
+            <X className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
-
-      <div className={`overflow-auto ${collapsed ? "hidden" : ""}`} style={{ maxHeight: "42vh" }}>
-        <table className="border-collapse text-sm">
-          <thead>
-            <tr>
-              <th className="sticky left-0 z-10 bg-gray-100 border-b border-r px-3 py-2 text-left w-36 min-w-36" />
-              {items.map((it) => (
-                <th
-                  key={it.id}
-                  className="border-b border-r px-3 py-2 text-left min-w-[190px] align-top"
-                  style={{ borderTop: `3px solid ${CATEGORY_COLORS[it.category]}` }}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="font-bold text-gray-800 leading-tight">{it.name}</div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      {it.kind === "store" && (
-                        <button onClick={() => onEdit(it)} title="編集" className="text-gray-400 hover:text-gray-700">
-                          <Pencil className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                      <button onClick={() => onRemove(it.id)} title="外す" className="text-gray-400 hover:text-red-600">
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {COMPARE_ROWS.map((row) => (
-              <tr key={row.label}>
-                <td className="sticky left-0 z-10 bg-gray-50 border-b border-r px-3 py-1.5 text-gray-500 whitespace-nowrap font-medium">
-                  {row.label}
-                </td>
-                {items.map((it) => (
-                  <td key={it.id} className="border-b border-r px-3 py-1.5 text-gray-800 break-words">
-                    {row.get(it)}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      <div className="px-3 py-1.5 text-[11px] text-gray-400 border-t">
-        ピンをクリックで列を追加／もう一度クリックで外す
+      <div className="px-2 py-1">
+        {COMPARE_ROWS.map((row) => (
+          <div key={row.label} className="flex items-start justify-between gap-2 py-0.5 border-b last:border-b-0">
+            <span className="text-[10px] text-gray-500 whitespace-nowrap">{row.label}</span>
+            <span className="text-[11px] text-gray-800 text-right break-words">{row.get(item)}</span>
+          </div>
+        ))}
       </div>
     </div>
   )

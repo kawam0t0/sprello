@@ -1,14 +1,23 @@
 import { NextResponse } from "next/server"
 
 // 短縮GoogleマップURLを展開して緯度経度を取り出す
-function parse(url: string): { lat: number; lng: number } | null {
-  let m = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)
+function parse(raw: string): { lat: number; lng: number } | null {
+  if (!raw) return null
+  let url = raw
+  try {
+    url = decodeURIComponent(raw)
+  } catch {
+    /* ignore */
+  }
+  let m = url.match(/\/(?:search|place|dir|maps)\/(-?\d{1,3}\.\d{3,})\s*,\s*\+?\s*(-?\d{1,3}\.\d{3,})/)
+  if (m) return { lat: +m[1], lng: +m[2] }
+  m = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)
   if (m) return { lat: +m[1], lng: +m[2] }
   m = url.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/)
   if (m) return { lat: +m[1], lng: +m[2] }
-  m = url.match(/[?&](?:q|ll|query|center|destination|daddr)=(-?\d+\.\d+),(-?\d+\.\d+)/)
+  m = url.match(/[?&](?:q|ll|query|center|destination|daddr)=(-?\d+\.\d+)\s*,\s*\+?\s*(-?\d+\.\d+)/)
   if (m) return { lat: +m[1], lng: +m[2] }
-  m = url.match(/(-?\d{1,2}\.\d{4,}),(-?\d{2,3}\.\d{4,})/)
+  m = url.match(/(-?\d{1,3}\.\d{4,})\s*,\s*\+?\s*(-?\d{1,3}\.\d{4,})/)
   if (m) return { lat: +m[1], lng: +m[2] }
   return null
 }

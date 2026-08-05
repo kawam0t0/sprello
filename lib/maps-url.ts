@@ -3,17 +3,21 @@
 
 export function parseLatLngFromUrl(url: string): { lat: number; lng: number } | null {
   if (!url) return null
+  const dec = decodeURIComponent(url)
+  // 例: .../search/36.295199,+139.397151 や /place/LAT,LNG （短縮URLの展開先）
+  let m = dec.match(/\/(?:search|place|dir|maps)\/(-?\d{1,3}\.\d{3,})\s*,\s*\+?\s*(-?\d{1,3}\.\d{3,})/)
+  if (m) return { lat: +m[1], lng: +m[2] }
   // 例: .../@36.3716,139.0804,17z/...
-  let m = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)
+  m = dec.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)
   if (m) return { lat: +m[1], lng: +m[2] }
   // 例: ...!3d36.3716!4d139.0804...（placeデータ）
-  m = url.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/)
+  m = dec.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/)
   if (m) return { lat: +m[1], lng: +m[2] }
-  // 例: ?q=36.3716,139.0804 / &ll= / &center= / &destination=
-  m = url.match(/[?&](?:q|ll|query|center|destination|daddr)=(-?\d+\.\d+),(-?\d+\.\d+)/)
+  // 例: ?q=36.3716,139.0804 / &ll= / &center= / &destination=（+や空白も許容）
+  m = dec.match(/[?&](?:q|ll|query|center|destination|daddr)=(-?\d+\.\d+)\s*,\s*\+?\s*(-?\d+\.\d+)/)
   if (m) return { lat: +m[1], lng: +m[2] }
-  // 経路やパス中に素の "lat,lng" があるケース
-  m = url.match(/(-?\d{1,2}\.\d{4,}),(-?\d{2,3}\.\d{4,})/)
+  // 素の "lat,lng"（間に + や空白があってもOK）
+  m = dec.match(/(-?\d{1,3}\.\d{4,})\s*,\s*\+?\s*(-?\d{1,3}\.\d{4,})/)
   if (m) return { lat: +m[1], lng: +m[2] }
   return null
 }

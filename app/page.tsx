@@ -28,7 +28,7 @@ import { StoresView } from "@/components/stores-view"
 
 // Supabase関連のimport
 import { useBoardData } from "@/hooks/use-board-data"
-import { createCard, updateCard, deleteCard, moveCard, swapCards, getCardCount, createProject, geocodeAddress } from "@/lib/database-operations"
+import { createCard, updateCard, deleteCard, moveCard, swapCards, getCardCount, createProject, geocodeAddress, upsertStoreFromCard } from "@/lib/database-operations"
 import { CATEGORY_COLORS, PROJECT_CATEGORIES, normalizeCategory } from "@/types/database"
 import { resolveLatLngFromUrl } from "@/lib/maps-url"
 import type { Card as CardType, ProjectCategory } from "@/types/database"
@@ -75,7 +75,7 @@ export default function Home() {
   // ローディング中の表示
   if (loading) {
     return (
-      <div className="h-screen bg-yellow-400 flex flex-col items-center justify-center">
+      <div className="h-screen bg-[#1b4da0] flex flex-col items-center justify-center">
         <div className="text-white text-xl mb-4">読み込み中...</div>
       </div>
     )
@@ -84,9 +84,9 @@ export default function Home() {
   // エラー時の表示
   if (error) {
     return (
-      <div className="h-screen bg-yellow-400 flex flex-col items-center justify-center">
+      <div className="h-screen bg-[#1b4da0] flex flex-col items-center justify-center">
         <div className="text-red-600 text-xl mb-4">エラー: {error}</div>
-        <Button onClick={refetch} className="bg-yellow-500 hover:bg-yellow-600">
+        <Button onClick={refetch} className="bg-[#1b4da0] hover:bg-[#163f85]">
           再試行
         </Button>
       </div>
@@ -96,9 +96,9 @@ export default function Home() {
   // ボードデータがない場合
   if (!board) {
     return (
-      <div className="h-screen bg-yellow-400 flex flex-col items-center justify-center">
+      <div className="h-screen bg-[#1b4da0] flex flex-col items-center justify-center">
         <div className="text-white text-xl mb-4">ボードが見つかりません</div>
-        <Button onClick={refetch} className="bg-yellow-500 hover:bg-yellow-600">
+        <Button onClick={refetch} className="bg-[#1b4da0] hover:bg-[#163f85]">
           再試行
         </Button>
       </div>
@@ -209,6 +209,11 @@ export default function Home() {
         lat,
         lng,
       })
+      // 完了リストのプロジェクトを編集した場合は自社店舗(stores)も同期
+      const listTitle = board.lists.find((l) => l.id === updatedCard.list_id)?.title ?? ""
+      if (listTitle.includes("完了")) {
+        await upsertStoreFromCard({ ...updatedCard, lat, lng })
+      }
       refetch() // データを再取得
     } catch (error) {
       console.error("カード更新エラー:", error)
@@ -350,11 +355,11 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-yellow-400 flex flex-col">
+    <div className="min-h-screen bg-[#1b4da0] flex flex-col">
       {/* Main Content */}
       <div className="flex-1 flex flex-col">
         {/* Header */}
-        <div className="bg-yellow-500 text-white p-4">
+        <div className="bg-[#1b4da0] text-white p-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <img src="/images/sprello-logo.png" alt="Sprello Logo" width={40} height={40} className="rounded-lg" />
@@ -365,7 +370,7 @@ export default function Home() {
                 variant={viewMode === "board" ? "secondary" : "ghost"}
                 size="sm"
                 onClick={() => setViewMode("board")}
-                className={viewMode === "board" ? "bg-yellow-600 hover:bg-yellow-700" : "hover:bg-yellow-600"}
+                className={viewMode === "board" ? "bg-[#163f85] hover:bg-[#10305f]" : "hover:bg-[#163f85]"}
               >
                 <LayoutList className="w-4 h-4 mr-2" />
                 ボード
@@ -374,7 +379,7 @@ export default function Home() {
                 variant={viewMode === "timeline" ? "secondary" : "ghost"}
                 size="sm"
                 onClick={() => setViewMode("timeline")}
-                className={viewMode === "timeline" ? "bg-yellow-600 hover:bg-yellow-700" : "hover:bg-yellow-600"}
+                className={viewMode === "timeline" ? "bg-[#163f85] hover:bg-[#10305f]" : "hover:bg-[#163f85]"}
               >
                 <CalendarDays className="w-4 h-4 mr-2" />
                 タイムライン
@@ -383,7 +388,7 @@ export default function Home() {
                 variant={viewMode === "map" ? "secondary" : "ghost"}
                 size="sm"
                 onClick={() => setViewMode("map")}
-                className={viewMode === "map" ? "bg-yellow-600 hover:bg-yellow-700" : "hover:bg-yellow-600"}
+                className={viewMode === "map" ? "bg-[#163f85] hover:bg-[#10305f]" : "hover:bg-[#163f85]"}
               >
                 <MapIcon className="w-4 h-4 mr-2" />
                 マップ
@@ -392,16 +397,16 @@ export default function Home() {
                 variant={viewMode === "stores" ? "secondary" : "ghost"}
                 size="sm"
                 onClick={() => setViewMode("stores")}
-                className={viewMode === "stores" ? "bg-yellow-600 hover:bg-yellow-700" : "hover:bg-yellow-600"}
+                className={viewMode === "stores" ? "bg-[#163f85] hover:bg-[#10305f]" : "hover:bg-[#163f85]"}
               >
                 <LayoutList className="w-4 h-4 mr-2" />
                 店舗一覧表
               </Button>
-              <div className="w-px h-6 bg-yellow-300 mx-1" />
+              <div className="w-px h-6 bg-white/30 mx-1" />
               <Button
                 size="sm"
                 onClick={() => setProjectFormOpen(true)}
-                className="bg-white text-yellow-700 hover:bg-yellow-50 font-semibold"
+                className="bg-white text-[#1b4da0] hover:bg-blue-50 font-semibold"
               >
                 <Plus className="w-4 h-4 mr-1" />
                 新規プロジェクト
@@ -420,7 +425,7 @@ export default function Home() {
                 onClick={() => setYomiFilter("all")}
                 className={`px-3 py-1.5 rounded-full text-sm border ${
                   yomiFilter === "all"
-                    ? "bg-emerald-500 text-white border-emerald-500"
+                    ? "bg-[#1b4da0] text-white border-[#1b4da0]"
                     : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
                 }`}
               >
@@ -432,7 +437,7 @@ export default function Home() {
                   onClick={() => setYomiFilter(list.id)}
                   className={`px-3 py-1.5 rounded-full text-sm border ${
                     yomiFilter === list.id
-                      ? "bg-emerald-500 text-white border-emerald-500"
+                      ? "bg-[#1b4da0] text-white border-[#1b4da0]"
                       : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
                   }`}
                 >
@@ -504,7 +509,13 @@ export default function Home() {
                     try {
                       const count = await getCardCount(val)
                       await moveCard(selectedCard.id, val, count)
-                      setSelectedCard({ ...selectedCard, list_id: val })
+                      const updated = { ...selectedCard, list_id: val }
+                      setSelectedCard(updated)
+                      // 「完了」に移したら自社店舗(stores)へ登録＝店舗一覧＆地図ピンに反映
+                      const targetTitle = board.lists.find((l) => l.id === val)?.title ?? ""
+                      if (targetTitle.includes("完了")) {
+                        await upsertStoreFromCard(updated)
+                      }
                       refetch()
                     } catch (err) {
                       console.error("ヨミ変更エラー:", err)
@@ -805,7 +816,7 @@ export default function Home() {
                     handleUpdateCard(selectedCard)
                     setDialogOpen(false)
                   }}
-                  className="bg-yellow-500 hover:bg-yellow-600"
+                  className="bg-[#1b4da0] hover:bg-[#163f85]"
                 >
                   保存
                 </Button>

@@ -28,6 +28,43 @@ export async function fetchPopulation(
   }
 }
 
+// 完了したプロジェクト(カード)を自社店舗(stores)へ反映（store_codeで重複防止のupsert）
+export async function upsertStoreFromCard(card: Card): Promise<void> {
+  const code = `PJ-${card.id}`
+  const { error } = await supabase.from("stores").upsert(
+    {
+      store_code: code,
+      store_name: card.store_name || card.title,
+      brand: card.brand ?? "",
+      category: card.category ?? "スプラッシュンゴー",
+      address: card.address ?? "",
+      latitude: card.lat ?? null,
+      longitude: card.lng ?? null,
+      location_type: card.location_type ?? null,
+      prefecture: card.prefecture ?? null,
+      open_date: card.open_date ?? null,
+      rank: card.rank ?? null,
+      status: "オープン",
+      traffic_12h: card.traffic_12h ?? null,
+      surrounding_score: card.surrounding_score ?? null,
+      passing_speed: card.passing_speed ?? null,
+      corner_lot: card.corner_lot ?? null,
+      visibility: card.visibility ?? null,
+      awareness: card.awareness ?? null,
+      household_income: card.household_income ?? null,
+      size_tsubo: card.size_tsubo ?? null,
+      car_capacity: card.car_capacity ?? null,
+      wipe_spaces: card.wipe_spaces ?? null,
+      pop_1km: card.pop_1km ?? null,
+      pop_2km: card.pop_2km ?? null,
+      pop_5km: card.pop_5km ?? null,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "store_code" },
+  )
+  if (error) throw error
+}
+
 // 自社店舗を更新
 export async function updateStore(id: string, updates: Partial<Store>): Promise<void> {
   const { error } = await supabase

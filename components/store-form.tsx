@@ -189,7 +189,7 @@ export function StoreForm({ store, open, onOpenChange, onSubmit, submitting }: P
           <Button
             onClick={handleSubmit}
             disabled={submitting}
-            className="bg-yellow-500 hover:bg-yellow-600"
+            className="bg-[#1b4da0] hover:bg-[#163f85]"
           >
             {submitting ? "保存中..." : "保存"}
           </Button>

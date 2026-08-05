@@ -378,7 +378,7 @@ export function TimelineView({ board }: TimelineViewProps) {
                     {item.paymentDates.map((payment, payIdx) => (
                       <div
                         key={payIdx}
-                        className="absolute top-3 h-6 bg-yellow-500 bg-opacity-70 rounded-full flex items-center justify-center text-xs text-white font-bold group shadow-md hover:bg-opacity-80 transition-all cursor-default"
+                        className="absolute top-3 h-6 bg-[#1b4da0] bg-opacity-70 rounded-full flex items-center justify-center text-xs text-white font-bold group shadow-md hover:bg-opacity-80 transition-all cursor-default"
                         style={{
                           left: `${dateToPosition(payment.start)}%`,
                           width: `${getPeriodWidth(payment.start, payment.end)}%`,
@@ -468,7 +468,7 @@ export function TimelineView({ board }: TimelineViewProps) {
           <div className="mt-8 p-4 bg-gradient-to-r from-gray-50 to-gray-100 rounded-lg border border-gray-200">
             <div className="flex gap-8 justify-center items-center text-sm">
               <div className="flex items-center gap-2">
-                <div className="w-12 h-5 bg-yellow-500 bg-opacity-70 rounded-full shadow-sm"></div>
+                <div className="w-12 h-5 bg-[#1b4da0] bg-opacity-70 rounded-full shadow-sm"></div>
                 <span className="text-gray-700 font-medium">着金期間</span>
               </div>
               <div className="flex items-center gap-2">

@@ -356,7 +356,7 @@ export function ProjectForm({ open, onOpenChange, onSubmit, initial, submitting 
           <Button
             onClick={handleSubmit}
             disabled={submitting}
-            className="bg-yellow-500 hover:bg-yellow-600"
+            className="bg-[#1b4da0] hover:bg-[#163f85]"
           >
             {submitting ? "作成中..." : "プロジェクトを作成"}
           </Button>
