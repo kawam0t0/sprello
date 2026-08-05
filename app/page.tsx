@@ -20,6 +20,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { Label } from "@/components/ui/label"
+import { Switch } from "@/components/ui/switch"
 import { TimelineView } from "@/components/timeline-view"
 import { MapView } from "@/components/map-view"
 import { ProjectForm, type ProjectFormValues } from "@/components/project-form"
@@ -497,7 +498,7 @@ export default function Home() {
 
       {/* Card Detail Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl w-[95vw] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>タスク詳細</DialogTitle>
           </DialogHeader>
@@ -551,7 +552,7 @@ export default function Home() {
               {/* ArmBox 出店データ */}
               <div className="space-y-3 rounded-lg border border-gray-200 p-3">
                 <h3 className="text-sm font-semibold text-gray-800">出店データ（地図・商圏）</h3>
-                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div>
                     <Label className="text-xs text-gray-600">カテゴリ</Label>
                     <Select
@@ -587,13 +588,71 @@ export default function Home() {
                     />
                   </div>
                   <div>
+                    <Label className="text-xs text-gray-600">立地タイプ</Label>
+                    <Select
+                      value={selectedCard.location_type ?? ""}
+                      onValueChange={(val) => setSelectedCard({ ...selectedCard, location_type: val })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="選択" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {["ロードサイド", "駅前", "住宅街", "商業施設内", "その他"].map((t) => (
+                          <SelectItem key={t} value={t}>
+                            {t}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
                     <Label className="text-xs text-gray-600">ランク</Label>
                     <Input
                       value={selectedCard.rank ?? ""}
                       onChange={(e) => setSelectedCard({ ...selectedCard, rank: e.target.value })}
                     />
                   </div>
-                  <div className="col-span-2">
+                  {(
+                    [
+                      ["日中12時間交通量", "traffic_12h"],
+                      ["周辺充実度", "surrounding_score"],
+                      ["通過速度", "passing_speed"],
+                      ["認知度", "awareness"],
+                      ["世帯年収（万円）", "household_income"],
+                      ["広さ（坪）", "size_tsubo"],
+                      ["何台並べるか", "car_capacity"],
+                      ["拭上げスペース数", "wipe_spaces"],
+                    ] as [string, keyof CardType][]
+                  ).map(([label, key]) => (
+                    <div key={key as string}>
+                      <Label className="text-xs text-gray-600">{label}</Label>
+                      <Input
+                        type="number"
+                        value={(selectedCard[key] as number | null | undefined)?.toString() ?? ""}
+                        onChange={(e) =>
+                          setSelectedCard({
+                            ...selectedCard,
+                            [key]: e.target.value === "" ? null : Number(e.target.value),
+                          })
+                        }
+                      />
+                    </div>
+                  ))}
+                  <div className="flex items-center gap-2 pt-5">
+                    <Switch
+                      checked={!!selectedCard.corner_lot}
+                      onCheckedChange={(c) => setSelectedCard({ ...selectedCard, corner_lot: c })}
+                    />
+                    <span className="text-xs text-gray-600">角地</span>
+                  </div>
+                  <div className="flex items-center gap-2 pt-5">
+                    <Switch
+                      checked={!!selectedCard.visibility}
+                      onCheckedChange={(c) => setSelectedCard({ ...selectedCard, visibility: c })}
+                    />
+                    <span className="text-xs text-gray-600">視認性</span>
+                  </div>
+                  <div className="col-span-2 md:col-span-4">
                     <Label className="text-xs text-gray-600">住所（保存時に地図ピンを更新）</Label>
                     <Input
                       value={selectedCard.address ?? ""}
