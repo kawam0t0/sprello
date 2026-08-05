@@ -29,7 +29,7 @@ import { StoresView } from "@/components/stores-view"
 
 // Supabase関連のimport
 import { useBoardData } from "@/hooks/use-board-data"
-import { createCard, updateCard, deleteCard, moveCard, swapCards, getCardCount, createProject, geocodeAddress, upsertStoreFromCard, fetchPopulation } from "@/lib/database-operations"
+import { createCard, updateCard, deleteCard, moveCard, swapCards, getCardCount, createProject, geocodeAddress, upsertStoreFromCard, fetchPopulation, fetchSheetSpec } from "@/lib/database-operations"
 import { CATEGORY_COLORS, PROJECT_CATEGORIES, normalizeCategory } from "@/types/database"
 import { resolveLatLngFromUrl } from "@/lib/maps-url"
 import type { Card as CardType, ProjectCategory } from "@/types/database"
@@ -57,6 +57,7 @@ export default function Home() {
   const [projectFormOpen, setProjectFormOpen] = useState(false)
   const [creatingProject, setCreatingProject] = useState(false)
   const [fetchingCardPop, setFetchingCardPop] = useState(false)
+  const [fetchingSpec, setFetchingSpec] = useState(false)
 
   const [statusOptions, setStatusOptions] = useState(["見積待ち", "融資待ち", "補助金待ち", "社内稟議待ち"])
   const [newStatusOption, setNewStatusOption] = useState("")
@@ -197,6 +198,7 @@ export default function Home() {
         candidate_url2: updatedCard.candidate_url2,
         company_name: updatedCard.company_name,
         company_url: updatedCard.company_url,
+        spec_sheet_url: updatedCard.spec_sheet_url,
         // ArmBox項目
         category: updatedCard.category,
         district: updatedCard.district,
@@ -547,6 +549,71 @@ export default function Home() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* 候補地スペック取込（スプレッドシート「本部使用【候補地スペック】」） */}
+              <div>
+                <Label htmlFor="specSheet">候補地スペック取込（スプレッドシートURL）</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="specSheet"
+                    type="url"
+                    placeholder="https://docs.google.com/spreadsheets/d/.../edit"
+                    value={selectedCard.spec_sheet_url ?? ""}
+                    onChange={(e) => setSelectedCard({ ...selectedCard, spec_sheet_url: e.target.value })}
+                  />
+                  <Button
+                    type="button"
+                    className="flex-shrink-0 whitespace-nowrap bg-[#1b4da0] hover:bg-[#163f85]"
+                    size="sm"
+                    disabled={fetchingSpec}
+                    onClick={async () => {
+                      const url = (selectedCard.spec_sheet_url ?? "").trim()
+                      if (!url) {
+                        alert("先にスプレッドシートのURLを貼り付けてください")
+                        return
+                      }
+                      setFetchingSpec(true)
+                      try {
+                        const r = await fetchSheetSpec(url)
+                        if (r && r.found) {
+                          const v = r.values
+                          const next = { ...selectedCard }
+                          if (v.store_name != null) next.store_name = v.store_name
+                          if (v.size_tsubo != null) next.size_tsubo = v.size_tsubo
+                          if (v.traffic_12h != null) next.traffic_12h = v.traffic_12h
+                          if (v.household_income != null) next.household_income = v.household_income
+                          if (v.passing_speed != null) next.passing_speed = v.passing_speed
+                          if (v.surrounding_score != null) next.surrounding_score = v.surrounding_score
+                          setSelectedCard(next)
+                          const label: Record<string, string> = {
+                            store_name: "店舗名",
+                            size_tsubo: "坪数",
+                            traffic_12h: "日中12時間交通量",
+                            household_income: "世帯年収",
+                            passing_speed: "通過速度",
+                            surrounding_score: "周辺充実度",
+                          }
+                          alert(
+                            "取得しました（保存を押すと確定します）:\n" +
+                              r.filled.map((k) => `・${label[k] ?? k}`).join("\n"),
+                          )
+                        } else if (r && "message" in r) {
+                          alert(r.message)
+                        } else {
+                          alert("取得に失敗しました。時間をおいて再度お試しください")
+                        }
+                      } finally {
+                        setFetchingSpec(false)
+                      }
+                    }}
+                  >
+                    {fetchingSpec ? "取得中..." : "データ取得"}
+                  </Button>
+                </div>
+                <p className="mt-1 text-[11px] text-gray-400">
+                  「本部使用【候補地スペック】」シートから 店舗名／坪数／交通量／世帯年収／通過速度／周辺充実度（＝消費施設充実度）を取り込みます
+                </p>
               </div>
 
               {/* ArmBox 出店データ */}

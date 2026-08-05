@@ -31,6 +31,41 @@ export async function fetchPopulation(
   }
 }
 
+// Googleスプレッドシート「本部使用【候補地スペック】」から候補地スペックを取得
+export async function fetchSheetSpec(
+  url: string,
+): Promise<
+  | {
+      found: true
+      values: {
+        store_name: string | null
+        size_tsubo: number | null
+        traffic_12h: number | null
+        household_income: number | null
+        passing_speed: number | null
+        surrounding_score: number | null
+      }
+      filled: string[]
+    }
+  | { found: false; message: string }
+  | null
+> {
+  try {
+    const res = await fetch(`/api/sheet-spec?url=${encodeURIComponent(url)}`)
+    const data = await res.json()
+    if (data.error) {
+      return { found: false, message: data.error }
+    }
+    if (data.found) {
+      return { found: true, values: data.values, filled: data.filled }
+    }
+    return { found: false, message: data.message ?? "取得できませんでした" }
+  } catch (e) {
+    console.error("[fetchSheetSpec] error:", e)
+    return null
+  }
+}
+
 // 完了したプロジェクト(カード)を自社店舗(stores)へ反映（store_codeで重複防止のupsert）
 export async function upsertStoreFromCard(card: Card): Promise<void> {
   const code = `PJ-${card.id}`

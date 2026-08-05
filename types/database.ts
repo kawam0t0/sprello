@@ -111,6 +111,7 @@ export interface Card {
   updated_at: string
   trello_list_id?: string | null
   trello_card_id?: string | null
+  spec_sheet_url?: string | null // 候補地スペック取込用スプレッドシートURL
 
   // --- ArmBox 出店プロジェクト項目（04-armbox-fields.sql で追加） ---
   category?: ProjectCategory | null // カテゴリ
