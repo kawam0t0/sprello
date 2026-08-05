@@ -498,7 +498,7 @@ export default function Home() {
 
       {/* Card Detail Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-5xl w-[95vw] max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[95vw] sm:max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>タスク詳細</DialogTitle>
           </DialogHeader>
@@ -554,11 +554,16 @@ export default function Home() {
                 <h3 className="text-sm font-semibold text-gray-800">出店データ（地図・商圏）</h3>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   <div>
-                    <Label className="text-xs text-gray-600">カテゴリ</Label>
+                    <Label className="text-xs text-gray-600">ブランド名</Label>
                     <Select
                       value={normalizeCategory(selectedCard.category)}
                       onValueChange={(val) =>
-                        setSelectedCard({ ...selectedCard, category: val as ProjectCategory })
+                        setSelectedCard({
+                          ...selectedCard,
+                          category: val as ProjectCategory,
+                          // ブランド名＝カテゴリ。店舗マスターのbrandにも同じ値を反映
+                          brand: val,
+                        })
                       }
                     >
                       <SelectTrigger>
@@ -578,13 +583,6 @@ export default function Home() {
                     <Input
                       value={selectedCard.store_name ?? ""}
                       onChange={(e) => setSelectedCard({ ...selectedCard, store_name: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs text-gray-600">ブランド名</Label>
-                    <Input
-                      value={selectedCard.brand ?? ""}
-                      onChange={(e) => setSelectedCard({ ...selectedCard, brand: e.target.value })}
                     />
                   </div>
                   <div>

@@ -10,9 +10,10 @@ export function useBoardData(boardId = "550e8400-e29b-41d4-a716-446655440000") {
   const [error, setError] = useState<string | null>(null)
 
   // データを取得する関数
-  const fetchBoardData = async () => {
+  // showLoading=false のときは全画面ローディングを出さずに裏で更新（保存時のちらつき防止）
+  const fetchBoardData = async (showLoading = false) => {
     try {
-      setLoading(true)
+      if (showLoading) setLoading(true)
 
       // ボード情報を取得
       const { data: boardData, error: boardError } = await supabase
@@ -57,22 +58,23 @@ export function useBoardData(boardId = "550e8400-e29b-41d4-a716-446655440000") {
     } catch (err) {
       setError(err instanceof Error ? err.message : "エラーが発生しました")
     } finally {
-      setLoading(false)
+      if (showLoading) setLoading(false)
     }
   }
 
   // リアルタイム購読を設定
   useEffect(() => {
-    fetchBoardData()
+    // 初回だけ全画面ローディングを表示。以降の更新は裏で静かに反映
+    fetchBoardData(true)
 
-    // リアルタイム購読
+    // リアルタイム購読（保存時などは裏で更新してちらつかせない）
     const channel = supabase
       .channel("board-changes")
       .on("postgres_changes", { event: "*", schema: "public", table: "boards", filter: `id=eq.${boardId}` }, () =>
-        fetchBoardData(),
+        fetchBoardData(false),
       )
-      .on("postgres_changes", { event: "*", schema: "public", table: "lists" }, () => fetchBoardData())
-      .on("postgres_changes", { event: "*", schema: "public", table: "cards" }, () => fetchBoardData())
+      .on("postgres_changes", { event: "*", schema: "public", table: "lists" }, () => fetchBoardData(false))
+      .on("postgres_changes", { event: "*", schema: "public", table: "cards" }, () => fetchBoardData(false))
       .subscribe()
 
     return () => {
@@ -80,5 +82,8 @@ export function useBoardData(boardId = "550e8400-e29b-41d4-a716-446655440000") {
     }
   }, [boardId])
 
-  return { board, loading, error, refetch: fetchBoardData }
+  // 明示的な再取得（保存後など）も全画面ローディングは出さない
+  const refetch = () => fetchBoardData(false)
+
+  return { board, loading, error, refetch }
 }
