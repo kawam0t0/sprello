@@ -160,11 +160,11 @@ export function MapView({ cards }: MapViewProps) {
 
   return (
     <div className="h-full relative flex">
-      {/* 左：選択したピンの詳細を縦積み（細身） */}
+      {/* 左：選択したピンの詳細を横並び（列）で比較。地図は右に残る */}
       {selectedItems.length > 0 && (
-        <div className="w-72 shrink-0 border-r bg-gray-50 overflow-y-auto">
-          <div className="flex items-center justify-between px-3 py-2 bg-slate-800 text-white sticky top-0 z-10">
-            <span className="text-sm font-bold">選択中 {selectedItems.length} 件</span>
+        <div className="shrink-0 border-r bg-white flex flex-col" style={{ width: "min(480px, 52vw)" }}>
+          <div className="flex items-center justify-between px-3 py-2 bg-slate-800 text-white">
+            <span className="text-sm font-bold">施設詳細（比較 {selectedItems.length} 件）</span>
             <button
               onClick={() => setSelectedIds([])}
               className="text-xs bg-white/15 hover:bg-white/25 px-2 py-1 rounded"
@@ -172,16 +172,11 @@ export function MapView({ cards }: MapViewProps) {
               全てクリア
             </button>
           </div>
-          <div className="p-2 space-y-2">
-            {selectedItems.map((it) => (
-              <DetailCard
-                key={it.id}
-                item={it}
-                onRemove={() => setSelectedIds((prev) => prev.filter((x) => x !== it.id))}
-                onEdit={it.kind === "store" ? () => handleEditItem(it) : undefined}
-              />
-            ))}
-          </div>
+          <CompareTable
+            items={selectedItems}
+            onRemove={(id) => setSelectedIds((prev) => prev.filter((x) => x !== id))}
+            onEdit={handleEditItem}
+          />
         </div>
       )}
 
@@ -426,42 +421,60 @@ const COMPARE_ROWS: { label: string; get: (it: MapItem) => string }[] = (() => {
   ]
 })()
 
-// 選択した1店舗のコンパクト詳細カード（左に縦積み）
-function DetailCard({
-  item,
+// 選択した店舗を横並びの列で比較（ArmBox式）。左ドックに収め、横スクロール可。
+function CompareTable({
+  items,
   onRemove,
   onEdit,
 }: {
-  item: MapItem
-  onRemove: () => void
-  onEdit?: () => void
+  items: MapItem[]
+  onRemove: (id: string) => void
+  onEdit: (item: MapItem) => void
 }) {
   return (
-    <div className="bg-white rounded-md shadow border border-gray-200 overflow-hidden">
-      <div
-        className="flex items-center justify-between px-2.5 py-1.5 text-white"
-        style={{ backgroundColor: CATEGORY_COLORS[item.category] }}
-      >
-        <div className="text-xs font-bold truncate">{item.name}</div>
-        <div className="flex items-center gap-1 flex-shrink-0">
-          {onEdit && (
-            <button onClick={onEdit} title="編集" className="hover:bg-white/20 rounded p-0.5">
-              <Pencil className="w-3.5 h-3.5" />
-            </button>
-          )}
-          <button onClick={onRemove} title="外す" className="hover:bg-white/20 rounded p-0.5">
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      </div>
-      <div className="px-2 py-1">
-        {COMPARE_ROWS.map((row) => (
-          <div key={row.label} className="flex items-start justify-between gap-2 py-0.5 border-b last:border-b-0">
-            <span className="text-[10px] text-gray-500 whitespace-nowrap">{row.label}</span>
-            <span className="text-[11px] text-gray-800 text-right break-words">{row.get(item)}</span>
-          </div>
-        ))}
-      </div>
+    <div className="overflow-auto flex-1">
+      <table className="border-collapse text-xs">
+        <thead>
+          <tr>
+            <th className="sticky left-0 z-10 bg-gray-100 border-b border-r px-2 py-2 text-left w-24 min-w-24" />
+            {items.map((it) => (
+              <th
+                key={it.id}
+                className="border-b border-r px-2 py-2 text-left min-w-[130px] align-top"
+                style={{ borderTop: `3px solid ${CATEGORY_COLORS[it.category]}` }}
+              >
+                <div className="flex items-start justify-between gap-1">
+                  <div className="font-bold text-gray-800 leading-tight text-[11px]">{it.name}</div>
+                  <div className="flex items-center gap-0.5 flex-shrink-0">
+                    {it.kind === "store" && (
+                      <button onClick={() => onEdit(it)} title="編集" className="text-gray-400 hover:text-gray-700">
+                        <Pencil className="w-3 h-3" />
+                      </button>
+                    )}
+                    <button onClick={() => onRemove(it.id)} title="外す" className="text-gray-400 hover:text-red-600">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {COMPARE_ROWS.map((row) => (
+            <tr key={row.label}>
+              <td className="sticky left-0 z-10 bg-gray-50 border-b border-r px-2 py-1 text-gray-500 whitespace-nowrap font-medium text-[10px]">
+                {row.label}
+              </td>
+              {items.map((it) => (
+                <td key={it.id} className="border-b border-r px-2 py-1 text-gray-800 break-words">
+                  {row.get(it)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   )
 }
