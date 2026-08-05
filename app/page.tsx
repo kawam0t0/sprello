@@ -29,7 +29,7 @@ import { StoresView } from "@/components/stores-view"
 
 // Supabase関連のimport
 import { useBoardData } from "@/hooks/use-board-data"
-import { createCard, updateCard, deleteCard, moveCard, swapCards, getCardCount, createProject, geocodeAddress, upsertStoreFromCard, fetchPopulation } from "@/lib/database-operations"
+import { createCard, updateCard, deleteCard, moveCard, swapCards, getCardCount, createProject, geocodeAddress, upsertStoreFromCard, fetchPopulation, fetchTraffic } from "@/lib/database-operations"
 import { CATEGORY_COLORS, PROJECT_CATEGORIES, normalizeCategory } from "@/types/database"
 import { resolveLatLngFromUrl } from "@/lib/maps-url"
 import type { Card as CardType, ProjectCategory } from "@/types/database"
@@ -57,6 +57,7 @@ export default function Home() {
   const [projectFormOpen, setProjectFormOpen] = useState(false)
   const [creatingProject, setCreatingProject] = useState(false)
   const [fetchingCardPop, setFetchingCardPop] = useState(false)
+  const [fetchingTraffic, setFetchingTraffic] = useState(false)
 
   const [statusOptions, setStatusOptions] = useState(["見積待ち", "融資待ち", "補助金待ち", "社内稟議待ち"])
   const [newStatusOption, setNewStatusOption] = useState("")
@@ -610,9 +611,58 @@ export default function Home() {
                       onChange={(e) => setSelectedCard({ ...selectedCard, rank: e.target.value })}
                     />
                   </div>
+                  {/* 日中12時間交通量（国交省APIから最寄り観測点を自動取得可） */}
+                  <div className="col-span-2">
+                    <Label className="text-xs text-gray-600">日中12時間交通量</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        value={selectedCard.traffic_12h?.toString() ?? ""}
+                        onChange={(e) =>
+                          setSelectedCard({
+                            ...selectedCard,
+                            traffic_12h: e.target.value === "" ? null : Number(e.target.value),
+                          })
+                        }
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="flex-shrink-0 whitespace-nowrap"
+                        disabled={fetchingTraffic}
+                        onClick={async () => {
+                          if (selectedCard.lat == null || selectedCard.lng == null) {
+                            alert("先に候補地URLか住所を入れて保存し、ピンを立ててから取得してください")
+                            return
+                          }
+                          setFetchingTraffic(true)
+                          try {
+                            const t = await fetchTraffic(selectedCard.lat, selectedCard.lng)
+                            if (t && "traffic_12h" in t) {
+                              setSelectedCard({ ...selectedCard, traffic_12h: t.traffic_12h })
+                              const dist = (t.distance_m / 1000).toFixed(1)
+                              const d = t.date
+                              const ymd = `${d.slice(0, 4)}/${d.slice(4, 6)}/${d.slice(6, 8)}`
+                              alert(
+                                `最寄り観測点(${t.point_name ?? "国道"} / 約${dist}km, ${ymd})の\n日中12時間交通量: ${t.traffic_12h.toLocaleString()} 台 を入力しました`,
+                              )
+                            } else if (t && "found" in t) {
+                              alert(t.message)
+                            } else {
+                              alert("交通量の取得に失敗しました。時間をおいて再度お試しください")
+                            }
+                          } finally {
+                            setFetchingTraffic(false)
+                          }
+                        }}
+                      >
+                        {fetchingTraffic ? "取得中..." : "自動取得"}
+                      </Button>
+                    </div>
+                  </div>
                   {(
                     [
-                      ["日中12時間交通量", "traffic_12h"],
                       ["周辺充実度", "surrounding_score"],
                       ["通過速度", "passing_speed"],
                       ["認知度", "awareness"],
