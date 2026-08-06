@@ -15,6 +15,39 @@ const RADII: { km: number; label: string }[] = [
   { km: 5, label: "5km" },
 ]
 
+// 用途地域の表示色（use_area_ja でマッピング）。都市計画の慣例配色に準拠。
+const YOTO_ORDER = [
+  "第一種低層住居専用地域",
+  "第二種低層住居専用地域",
+  "第一種中高層住居専用地域",
+  "第二種中高層住居専用地域",
+  "第一種住居地域",
+  "第二種住居地域",
+  "準住居地域",
+  "田園住居地域",
+  "近隣商業地域",
+  "商業地域",
+  "準工業地域",
+  "工業地域",
+  "工業専用地域",
+]
+const YOTO_COLORS: Record<string, string> = {
+  第一種低層住居専用地域: "#4CAF7D",
+  第二種低層住居専用地域: "#78C08A",
+  第一種中高層住居専用地域: "#9CCC9E",
+  第二種中高層住居専用地域: "#C6E08A",
+  第一種住居地域: "#F5E27A",
+  第二種住居地域: "#F7EBB0",
+  準住居地域: "#F3C36B",
+  田園住居地域: "#A9D18E",
+  近隣商業地域: "#F3A98E",
+  商業地域: "#EC7FB0",
+  準工業地域: "#B9A6D6",
+  工業地域: "#A9C4E0",
+  工業専用地域: "#7FB2D9",
+}
+const YOTO_FALLBACK = "#cccccc"
+
 interface MapViewProps {
   cards: (Card & { listTitle?: string })[]
 }
@@ -124,6 +157,10 @@ export function MapView({ cards }: MapViewProps) {
   const [circleAll, setCircleAll] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [filterOpen, setFilterOpen] = useState(false)
+  const [showYoto, setShowYoto] = useState(false)
+  const [yotoLegend, setYotoLegend] = useState<{ counts: Record<string, number>; needZoom: boolean; noKey: boolean }>(
+    { counts: {}, needZoom: false, noKey: false },
+  )
 
   const [editStore, setEditStore] = useState<Store | null>(null)
   const [saving, setSaving] = useState(false)
@@ -219,8 +256,44 @@ export function MapView({ cards }: MapViewProps) {
               selectedIds={selectedIds}
               onSelect={toggleSelect}
             />
+            <YotoLayer enabled={showYoto} onLegend={setYotoLegend} />
           </Map>
         </APIProvider>
+
+        {/* 用途地域の凡例（表示ON時のみ） */}
+        {showYoto && (
+          <div className="absolute bottom-3 left-3 z-10 bg-white/95 rounded-lg shadow-xl border p-3 max-h-[46vh] overflow-auto w-52">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-gray-700">用途地域</span>
+              <button onClick={() => setShowYoto(false)} className="text-gray-400 hover:text-gray-700">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            {yotoLegend.noKey ? (
+              <p className="text-[11px] text-rose-500 leading-snug">
+                REINFOLIB_API_KEY が未設定です。不動産情報ライブラリのAPIキーを環境変数に設定してください。
+              </p>
+            ) : yotoLegend.needZoom ? (
+              <p className="text-[11px] text-gray-500 leading-snug">もう少し地図をズームインすると表示されます。</p>
+            ) : (
+              <div className="space-y-1">
+                {YOTO_ORDER.filter((n) => (yotoLegend.counts[n] ?? 0) > 0).map((n) => (
+                  <div key={n} className="flex items-center gap-1.5 text-[11px]">
+                    <span
+                      className="inline-block w-3 h-3 rounded-sm border border-black/10 flex-shrink-0"
+                      style={{ backgroundColor: YOTO_COLORS[n] }}
+                    />
+                    <span className="flex-1 leading-tight">{n}</span>
+                    <span className="text-gray-400">{yotoLegend.counts[n]}</span>
+                  </div>
+                ))}
+                {Object.keys(yotoLegend.counts).length === 0 && (
+                  <p className="text-[11px] text-gray-400">この範囲に用途地域データがありません。</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* ハンバーガー：カテゴリ表示・同心円 */}
         <div className="absolute top-3 left-3 z-10">
@@ -295,6 +368,15 @@ export function MapView({ cards }: MapViewProps) {
                   ))}
                 </div>
                 <div className="text-[10px] text-gray-400 mt-1">枠の色＝ブランド、ラベル＝進捗</div>
+              </div>
+
+              <div className="border-t pt-2">
+                <div className="text-xs font-semibold text-gray-500 mb-2">地図レイヤ</div>
+                <label className="flex items-center gap-2 cursor-pointer text-sm">
+                  <input type="checkbox" checked={showYoto} onChange={(e) => setShowYoto(e.target.checked)} />
+                  用途地域を表示
+                </label>
+                <div className="text-[10px] text-gray-400 mt-1">出典：国交省 不動産情報ライブラリ（要APIキー）</div>
               </div>
 
               <div className="text-[11px] text-gray-400 border-t pt-2">
@@ -437,6 +519,139 @@ function MapOverlays({
       circlesRef.current = []
     }
   }, [map, items, enabledRadii, circleAll, selectedIds])
+
+  return null
+}
+
+// ---- 用途地域オーバーレイ（不動産情報ライブラリ XKT002 タイル） ----
+function YotoLayer({
+  enabled,
+  onLegend,
+}: {
+  enabled: boolean
+  onLegend: (v: { counts: Record<string, number>; needZoom: boolean; noKey: boolean }) => void
+}) {
+  const map = useMap()
+
+  useEffect(() => {
+    if (!map || typeof google === "undefined" || !enabled) return
+
+    const data = new google.maps.Data()
+    const info = new google.maps.InfoWindow()
+    data.setStyle((f) => {
+      const name = (f.getProperty("use_area_ja") as string) || ""
+      const c = YOTO_COLORS[name] || YOTO_FALLBACK
+      return {
+        fillColor: c,
+        fillOpacity: 0.35,
+        strokeColor: c,
+        strokeOpacity: 0.75,
+        strokeWeight: 0.6,
+        clickable: true,
+      }
+    })
+    data.setMap(map)
+
+    const clickL = data.addListener("click", (ev: any) => {
+      const f = ev.feature
+      const name = f.getProperty("use_area_ja") ?? "—"
+      const bcr = f.getProperty("u_building_coverage_ratio_ja") ?? "—"
+      const far = f.getProperty("u_floor_area_ratio_ja") ?? "—"
+      const city = f.getProperty("city_name") ?? ""
+      info.setContent(
+        `<div style="font-size:12px;line-height:1.5"><b>${name}</b><br>建蔽率 ${bcr} ／ 容積率 ${far}<br><span style="color:#888">${city}</span></div>`,
+      )
+      info.setPosition(ev.latLng)
+      info.open({ map })
+    })
+
+    const loaded = new Set<string>()
+    let curZ: number | null = null
+
+    const tileX = (lng: number, z: number) => Math.floor(((lng + 180) / 360) * 2 ** z)
+    const tileY = (lat: number, z: number) => {
+      const r = (lat * Math.PI) / 180
+      return Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * 2 ** z)
+    }
+    const clearAll = () => {
+      data.forEach((f) => data.remove(f))
+      loaded.clear()
+    }
+    const countByType = () => {
+      const c: Record<string, number> = {}
+      data.forEach((f) => {
+        const n = (f.getProperty("use_area_ja") as string) || "不明"
+        c[n] = (c[n] || 0) + 1
+      })
+      return c
+    }
+
+    const refresh = async () => {
+      const zoom = map.getZoom() ?? 0
+      if (zoom < 11) {
+        clearAll()
+        curZ = null
+        onLegend({ counts: {}, needZoom: true, noKey: false })
+        return
+      }
+      const z = Math.min(15, Math.max(11, Math.round(zoom)))
+      if (z !== curZ) {
+        clearAll()
+        curZ = z
+      }
+      const b = map.getBounds()
+      if (!b) return
+      const ne = b.getNorthEast()
+      const sw = b.getSouthWest()
+      const x0 = tileX(sw.lng(), z),
+        x1 = tileX(ne.lng(), z)
+      const y0 = tileY(ne.lat(), z),
+        y1 = tileY(sw.lat(), z)
+      if ((x1 - x0 + 1) * (y1 - y0 + 1) > 60) {
+        onLegend({ counts: countByType(), needZoom: true, noKey: false })
+        return
+      }
+      let sawNoKey = false
+      const jobs: Promise<void>[] = []
+      for (let x = x0; x <= x1; x++) {
+        for (let y = y0; y <= y1; y++) {
+          const key = `${z}/${x}/${y}`
+          if (loaded.has(key)) continue
+          loaded.add(key)
+          jobs.push(
+            fetch(`/api/youto?z=${z}&x=${x}&y=${y}`)
+              .then((r) => r.json())
+              .then((j) => {
+                if (j && j.error) {
+                  if (j.error === "NO_KEY") sawNoKey = true
+                  return
+                }
+                if (j && j.type && Array.isArray(j.features)) {
+                  try {
+                    data.addGeoJson(j)
+                  } catch {
+                    /* 幾何が空などは無視 */
+                  }
+                }
+              })
+              .catch(() => {}),
+          )
+        }
+      }
+      await Promise.all(jobs)
+      onLegend({ counts: countByType(), needZoom: false, noKey: sawNoKey })
+    }
+
+    const idleL = map.addListener("idle", refresh)
+    refresh()
+
+    return () => {
+      google.maps.event.removeListener(idleL)
+      google.maps.event.removeListener(clickL)
+      info.close()
+      data.setMap(null)
+    }
+  }, [map, enabled, onLegend])
 
   return null
 }
