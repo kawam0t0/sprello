@@ -31,6 +31,38 @@ export async function fetchPopulation(
   }
 }
 
+// 道路交通センサス(令和3年度)から最寄り調査区間の昼間12時間交通量を取得
+export async function fetchTraffic(
+  lat: number,
+  lng: number,
+): Promise<
+  | { found: true; traffic_12h: number; distance_m: number; road_class: string; lanes: number | null }
+  | { found: false; message: string }
+  | null
+> {
+  try {
+    const res = await fetch(`/api/traffic?lat=${lat}&lng=${lng}`)
+    const data = await res.json()
+    if (data.error) {
+      console.warn("[fetchTraffic]", data.error)
+      return null
+    }
+    if (data.found) {
+      return {
+        found: true,
+        traffic_12h: data.traffic_12h,
+        distance_m: data.distance_m,
+        road_class: data.road_class,
+        lanes: data.lanes ?? null,
+      }
+    }
+    return { found: false, message: data.message ?? "見つかりませんでした" }
+  } catch (e) {
+    console.error("[fetchTraffic] error:", e)
+    return null
+  }
+}
+
 // Googleスプレッドシート「本部使用【候補地スペック】」から候補地スペックを取得
 export async function fetchSheetSpec(
   url: string,

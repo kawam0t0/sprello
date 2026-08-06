@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import type { Store } from "@/types/database"
-import { geocodeAddress, fetchPopulation } from "@/lib/database-operations"
+import { geocodeAddress, fetchPopulation, fetchTraffic } from "@/lib/database-operations"
 
 const RANK_OPTIONS = ["S", "A", "A-", "B", "B-", "C", "D"]
 const STATUS_OPTIONS = ["検討中", "計画中", "オープン", "閉店", "見送り"]
@@ -64,6 +64,31 @@ interface Props {
 export function StoreForm({ store, open, onOpenChange, onSubmit, submitting }: Props) {
   const [v, setV] = useState<Partial<Store>>({})
   const [fetchingPop, setFetchingPop] = useState(false)
+  const [fetchingTraffic, setFetchingTraffic] = useState(false)
+
+  const autoTraffic = async () => {
+    if (v.latitude == null || v.longitude == null) {
+      alert("緯度経度が無いため取得できません（住所を保存してピンが立ってから実行してください）")
+      return
+    }
+    setFetchingTraffic(true)
+    try {
+      const t = await fetchTraffic(v.latitude, v.longitude)
+      if (t && t.found) {
+        set({ traffic_12h: t.traffic_12h })
+        const dist = (t.distance_m / 1000).toFixed(1)
+        alert(
+          `最寄り調査区間（${t.road_class} / 約${dist}km）の\n昼間12時間交通量: ${t.traffic_12h.toLocaleString()} 台 を入力しました\n（道路交通センサス 令和3年度）`,
+        )
+      } else if (t && "message" in t) {
+        alert(t.message)
+      } else {
+        alert("交通量の取得に失敗しました。時間をおいて再度お試しください")
+      }
+    } finally {
+      setFetchingTraffic(false)
+    }
+  }
 
   useEffect(() => {
     if (store) setV(store)
@@ -164,7 +189,12 @@ export function StoreForm({ store, open, onOpenChange, onSubmit, submitting }: P
           </section>
 
           <section className="space-y-3">
-            <h3 className="text-sm font-semibold text-gray-800 border-b pb-1">評価・分析指標</h3>
+            <div className="flex items-center justify-between border-b pb-1">
+              <h3 className="text-sm font-semibold text-gray-800">評価・分析指標</h3>
+              <Button size="sm" variant="outline" onClick={autoTraffic} disabled={fetchingTraffic}>
+                {fetchingTraffic ? "取得中..." : "交通量を取得"}
+              </Button>
+            </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <NumField label="日中12時間交通量" value={v.traffic_12h} onChange={(n) => set({ traffic_12h: n })} />
               <NumField label="周辺充実度" value={v.surrounding_score} onChange={(n) => set({ surrounding_score: n })} />
