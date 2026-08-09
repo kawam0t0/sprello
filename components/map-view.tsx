@@ -180,30 +180,43 @@ export function MapView({ cards }: MapViewProps) {
     refreshStores()
   }, [])
 
-  // 住所はあるが座標が無い店舗を、住所からジオコーディングして座標を補完（自己修復）。
-  // 一度実行した店舗は再試行しない（失敗しても無限ループしないようにする）。
+  // 住所を「正」として座標を同期する（自己修復）。
+  // 住所がある店舗は毎セッション1回ジオコーディングし、
+  // 保存座標が無い/住所と大きくズレている場合は住所の座標で上書きする。
+  // （＝店舗一覧表の住所どおりの位置にピンを立てる）
   const geocodedRef = useRef<Set<string>>(new Set())
   useEffect(() => {
-    const targets = stores.filter(
-      (s) =>
-        s.address &&
-        (s.latitude == null || s.longitude == null || !Number.isFinite(Number(s.latitude))) &&
-        !geocodedRef.current.has(s.id),
-    )
+    const targets = stores.filter((s) => s.address && !geocodedRef.current.has(s.id))
     if (targets.length === 0) return
     let cancelled = false
+    // 2点間の距離(m)。約40m以上ズレていたら上書きする。
+    const distM = (aLat: number, aLng: number, bLat: number, bLng: number) => {
+      const R = 6371000,
+        toR = (d: number) => (d * Math.PI) / 180
+      const dLat = toR(bLat - aLat),
+        dLng = toR(bLng - aLng)
+      const x =
+        Math.sin(dLat / 2) ** 2 +
+        Math.cos(toR(aLat)) * Math.cos(toR(bLat)) * Math.sin(dLng / 2) ** 2
+      return 2 * R * Math.asin(Math.sqrt(x))
+    }
     ;(async () => {
       let updated = false
       for (const s of targets) {
         geocodedRef.current.add(s.id)
         const geo = await geocodeAddress(s.address as string)
         if (cancelled) return
-        if (geo.lat != null && geo.lng != null) {
+        if (geo.lat == null || geo.lng == null) continue
+        const curLat = s.latitude == null ? NaN : Number(s.latitude)
+        const curLng = s.longitude == null ? NaN : Number(s.longitude)
+        const hasCur = Number.isFinite(curLat) && Number.isFinite(curLng)
+        // 座標が無い、または住所の座標と40m以上ズレている場合のみ上書き
+        if (!hasCur || distM(curLat, curLng, geo.lat, geo.lng) > 40) {
           try {
             await updateStore(s.id, { latitude: geo.lat, longitude: geo.lng })
             updated = true
           } catch (e) {
-            console.warn("[map] 店舗座標の補完に失敗:", s.store_name, e)
+            console.warn("[map] 店舗座標の同期に失敗:", s.store_name, e)
           }
         }
       }
@@ -228,11 +241,13 @@ export function MapView({ cards }: MapViewProps) {
     { counts: {}, needZoom: false, noKey: false },
   )
   const [showPop, setShowPop] = useState(false)
-  const [popStatus, setPopStatus] = useState<{ needZoom: boolean; noKey: boolean; year: string | null }>({
-    needZoom: false,
-    noKey: false,
-    year: null,
-  })
+  const [popCenter, setPopCenter] = useState<{ lat: number; lng: number } | null>(null)
+  const [popStatus, setPopStatus] = useState<{
+    needCenter: boolean
+    noKey: boolean
+    year: string | null
+    total: number | null
+  }>({ needCenter: true, noKey: false, year: null, total: null })
 
   const [editStore, setEditStore] = useState<Store | null>(null)
   const [saving, setSaving] = useState(false)
@@ -329,7 +344,12 @@ export function MapView({ cards }: MapViewProps) {
               onSelect={toggleSelect}
             />
             <YotoLayer enabled={showYoto} onLegend={setYotoLegend} />
-            <PopMeshLayer enabled={showPop} onStatus={setPopStatus} />
+            <PopMeshLayer
+              enabled={showPop}
+              center={popCenter}
+              onPickCenter={(c) => setPopCenter(c)}
+              onStatus={setPopStatus}
+            />
           </Map>
         </APIProvider>
 
@@ -370,12 +390,18 @@ export function MapView({ cards }: MapViewProps) {
 
         {/* 人口ヒートマップの凡例（表示ON時のみ、右下） */}
         {showPop && (
-          <div className="absolute bottom-3 right-3 z-10 bg-white/95 rounded-lg shadow-xl border p-3 w-48">
+          <div className="absolute bottom-3 right-3 z-10 bg-white/95 rounded-lg shadow-xl border p-3 w-52">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-gray-700">
-                人口{popStatus.year ? `（${popStatus.year}年）` : ""}
+                人口ヒートマップ{popStatus.year ? `（${popStatus.year}年）` : ""}
               </span>
-              <button onClick={() => setShowPop(false)} className="text-gray-400 hover:text-gray-700">
+              <button
+                onClick={() => {
+                  setShowPop(false)
+                  setPopCenter(null)
+                }}
+                className="text-gray-400 hover:text-gray-700"
+              >
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -383,10 +409,20 @@ export function MapView({ cards }: MapViewProps) {
               <p className="text-[11px] text-rose-500 leading-snug">
                 REINFOLIB_API_KEY が未設定です。環境変数を設定してください。
               </p>
-            ) : popStatus.needZoom ? (
-              <p className="text-[11px] text-gray-500 leading-snug">もう少し地図をズームインすると表示されます。</p>
+            ) : popStatus.needCenter ? (
+              <p className="text-[11px] text-gray-500 leading-snug">
+                地図をクリックして分析地点を選ぶと、その半径2km圏内の人口を表示します。
+              </p>
             ) : (
               <div className="space-y-1">
+                {popStatus.total != null && (
+                  <div className="mb-1 pb-1.5 border-b">
+                    <div className="text-[10px] text-gray-500">半径2km圏内 合計</div>
+                    <div className="text-sm font-bold text-gray-800">
+                      {popStatus.total.toLocaleString()} 人
+                    </div>
+                  </div>
+                )}
                 {POP_BUCKETS.map((b) => (
                   <div key={b.label} className="flex items-center gap-1.5 text-[11px]">
                     <span
@@ -397,6 +433,12 @@ export function MapView({ cards }: MapViewProps) {
                   </div>
                 ))}
                 <p className="text-[10px] text-gray-400 pt-1">人/250mメッシュ・将来推計人口</p>
+                <button
+                  onClick={() => setPopCenter(null)}
+                  className="mt-1 text-[11px] text-[#1b4da0] hover:underline"
+                >
+                  別の地点を選ぶ
+                </button>
               </div>
             )}
           </div>
@@ -759,30 +801,78 @@ function YotoLayer({
 }
 
 // ---- 人口ヒートマップ（不動産情報ライブラリ XKT013 将来推計人口250mメッシュ） ----
+// 地図クリックで分析地点を選び、その半径2km圏内のみ250mメッシュ人口を表示する。
+const POP_RADIUS_M = 2000
+
+function featureCentroid(geom: any): [number, number] | null {
+  const ring =
+    geom?.type === "Polygon"
+      ? geom.coordinates?.[0]
+      : geom?.type === "MultiPolygon"
+        ? geom.coordinates?.[0]?.[0]
+        : null
+  if (!Array.isArray(ring) || ring.length === 0) return null
+  let sx = 0,
+    sy = 0,
+    n = 0
+  for (const pt of ring) {
+    if (Array.isArray(pt)) {
+      sx += pt[0]
+      sy += pt[1]
+      n++
+    }
+  }
+  return n ? [sx / n, sy / n] : null
+}
+
 function PopMeshLayer({
   enabled,
+  center,
+  onPickCenter,
   onStatus,
 }: {
   enabled: boolean
-  onStatus: (v: { needZoom: boolean; noKey: boolean; year: string | null }) => void
+  center: { lat: number; lng: number } | null
+  onPickCenter: (c: { lat: number; lng: number }) => void
+  onStatus: (v: { needCenter: boolean; noKey: boolean; year: string | null; total: number | null }) => void
 }) {
   const map = useMap()
 
+  // 地図クリックで分析地点を選ぶ（有効時のみ）
   useEffect(() => {
     if (!map || typeof google === "undefined" || !enabled) return
+    const l = map.addListener("click", (ev: any) => {
+      if (ev.latLng) onPickCenter({ lat: ev.latLng.lat(), lng: ev.latLng.lng() })
+    })
+    return () => google.maps.event.removeListener(l)
+  }, [map, enabled, onPickCenter])
+
+  // 選択地点の2km圏の人口メッシュを描画
+  useEffect(() => {
+    if (!map || typeof google === "undefined" || !enabled) return
+    if (!center) {
+      onStatus({ needCenter: true, noKey: false, year: null, total: null })
+      return
+    }
 
     const data = new google.maps.Data()
     const info = new google.maps.InfoWindow()
     data.setStyle((f) => {
       const { value } = popOf(readProps(f))
-      return {
-        fillColor: popColor(value),
-        fillOpacity: value > 0 ? 0.55 : 0,
-        strokeWeight: 0,
-        clickable: true,
-      }
+      return { fillColor: popColor(value), fillOpacity: value > 0 ? 0.6 : 0, strokeWeight: 0, clickable: true }
     })
     data.setMap(map)
+
+    const circle = new google.maps.Circle({
+      map,
+      center,
+      radius: POP_RADIUS_M,
+      strokeColor: "#1b4da0",
+      strokeOpacity: 0.9,
+      strokeWeight: 2,
+      fillOpacity: 0,
+      clickable: false,
+    })
 
     const clickL = data.addListener("click", (ev: any) => {
       const { value, year } = popOf(readProps(ev.feature))
@@ -793,52 +883,37 @@ function PopMeshLayer({
       info.open({ map })
     })
 
-    const loaded = new Set<string>()
-    let curZ: number | null = null
-    let year: string | null = null
-
+    const distM = (aLat: number, aLng: number, bLat: number, bLng: number) => {
+      const R = 6371000,
+        toR = (d: number) => (d * Math.PI) / 180
+      const dLat = toR(bLat - aLat),
+        dLng = toR(bLng - aLng)
+      const x =
+        Math.sin(dLat / 2) ** 2 + Math.cos(toR(aLat)) * Math.cos(toR(bLat)) * Math.sin(dLng / 2) ** 2
+      return 2 * R * Math.asin(Math.sqrt(x))
+    }
     const tileX = (lng: number, z: number) => Math.floor(((lng + 180) / 360) * 2 ** z)
     const tileY = (lat: number, z: number) => {
       const r = (lat * Math.PI) / 180
       return Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * 2 ** z)
     }
-    const clearAll = () => {
-      data.forEach((f) => data.remove(f))
-      loaded.clear()
-    }
 
-    const refresh = async () => {
-      const zoom = map.getZoom() ?? 0
-      if (zoom < 11) {
-        clearAll()
-        curZ = null
-        onStatus({ needZoom: true, noKey: false, year })
-        return
-      }
-      const z = Math.min(15, Math.max(11, Math.round(zoom)))
-      if (z !== curZ) {
-        clearAll()
-        curZ = z
-      }
-      const b = map.getBounds()
-      if (!b) return
-      const ne = b.getNorthEast()
-      const sw = b.getSouthWest()
-      const x0 = tileX(sw.lng(), z),
-        x1 = tileX(ne.lng(), z)
-      const y0 = tileY(ne.lat(), z),
-        y1 = tileY(sw.lat(), z)
-      if ((x1 - x0 + 1) * (y1 - y0 + 1) > 60) {
-        onStatus({ needZoom: true, noKey: false, year })
-        return
-      }
+    let cancelled = false
+    ;(async () => {
+      const z = 14 // 250mメッシュが読める固定ズーム
+      const latD = POP_RADIUS_M / 111000 + 0.005
+      const lngD = POP_RADIUS_M / (111000 * Math.cos((center.lat * Math.PI) / 180)) + 0.005
+      const x0 = tileX(center.lng - lngD, z),
+        x1 = tileX(center.lng + lngD, z)
+      const y0 = tileY(center.lat + latD, z),
+        y1 = tileY(center.lat - latD, z)
+
       let sawNoKey = false
+      let year: string | null = null
+      let total = 0
       const jobs: Promise<void>[] = []
       for (let x = x0; x <= x1; x++) {
         for (let y = y0; y <= y1; y++) {
-          const key = `${z}/${x}/${y}`
-          if (loaded.has(key)) continue
-          loaded.add(key)
           jobs.push(
             fetch(`/api/pop-mesh?z=${z}&x=${x}&y=${y}`)
               .then((r) => r.json())
@@ -847,10 +922,20 @@ function PopMeshLayer({
                   if (jj.error === "NO_KEY") sawNoKey = true
                   return
                 }
-                if (jj && jj.type && Array.isArray(jj.features)) {
-                  if (!year && jj.features[0]) year = popOf(jj.features[0].properties).year
+                if (!jj || !Array.isArray(jj.features)) return
+                // 中心から2km圏内のメッシュだけ採用
+                const kept = jj.features.filter((f: any) => {
+                  const c = featureCentroid(f.geometry)
+                  return c && distM(center.lat, center.lng, c[1], c[0]) <= POP_RADIUS_M
+                })
+                for (const f of kept) {
+                  const p = popOf(f.properties)
+                  if (!year) year = p.year
+                  total += p.value
+                }
+                if (kept.length) {
                   try {
-                    data.addGeoJson(jj)
+                    data.addGeoJson({ type: "FeatureCollection", features: kept })
                   } catch {
                     /* 空幾何は無視 */
                   }
@@ -861,19 +946,21 @@ function PopMeshLayer({
         }
       }
       await Promise.all(jobs)
-      onStatus({ needZoom: false, noKey: sawNoKey, year })
-    }
+      if (cancelled) return
+      onStatus({ needCenter: false, noKey: sawNoKey, year, total: Math.round(total) })
+    })()
 
-    const idleL = map.addListener("idle", refresh)
-    refresh()
+    // 選択地点へ寄せる
+    map.panTo(center)
 
     return () => {
-      google.maps.event.removeListener(idleL)
+      cancelled = true
       google.maps.event.removeListener(clickL)
       info.close()
+      circle.setMap(null)
       data.setMap(null)
     }
-  }, [map, enabled, onStatus])
+  }, [map, enabled, center, onStatus])
 
   return null
 }
