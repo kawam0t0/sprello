@@ -198,20 +198,45 @@ export async function createCard(listId: string, title: string, position: number
 }
 
 // 住所から緯度経度を取得。
-// まずブラウザ側（地図と同じリファラー許可済みキー）で変換し、
-// 失敗したときだけサーバーAPIにフォールバックする。失敗しても null を返す。
+// 日本の住所に強く、APIキー不要の「国土地理院 住所検索API」を最優先で使う
+// （GoogleキーのGeocoding API未許可(REQUEST_DENIED)問題を回避）。
+// 取れないときだけ Google（ブラウザ→サーバー）にフォールバック。失敗しても null を返す。
 export async function geocodeAddress(
   address: string,
 ): Promise<{ lat: number | null; lng: number | null }> {
   if (!address?.trim()) return { lat: null, lng: null }
 
-  // 1) ブラウザ側のGeocoder（追加キー不要）
+  // 全角数字・各種ハイフンを半角に正規化（例: 「３−１」→「3-1」）
+  const q = address
+    .replace(/[０-９]/g, (d) => String.fromCharCode(d.charCodeAt(0) - 0xfee0))
+    .replace(/[−–—―ー－]/g, "-")
+    .trim()
+
+  // 1) 国土地理院 住所検索API（無料・キー不要・番地レベルまで対応）
+  try {
+    const res = await fetch(
+      "https://msearch.gsi.go.jp/address-search/AddressSearch?q=" + encodeURIComponent(q),
+    )
+    if (res.ok) {
+      const arr = await res.json()
+      const c = Array.isArray(arr) && arr[0]?.geometry?.coordinates
+      if (Array.isArray(c) && c.length >= 2) {
+        const lng = Number(c[0]),
+          lat = Number(c[1])
+        if (Number.isFinite(lat) && Number.isFinite(lng)) return { lat, lng }
+      }
+    }
+  } catch (e) {
+    console.warn("[geocode] GSI失敗、Googleにフォールバック:", e)
+  }
+
+  // 2) ブラウザ側のGoogle Geocoder（フォールバック）
   if (typeof window !== "undefined") {
     try {
       const { loadGoogleMaps } = await import("./google-maps-loader")
       const g = await loadGoogleMaps()
       const geocoder = new g.maps.Geocoder()
-      const result = await geocoder.geocode({ address, region: "jp" })
+      const result = await geocoder.geocode({ address: q, region: "jp" })
       const loc = result?.results?.[0]?.geometry?.location
       if (loc) {
         return { lat: loc.lat(), lng: loc.lng() }
@@ -221,12 +246,12 @@ export async function geocodeAddress(
     }
   }
 
-  // 2) サーバーAPIフォールバック（GOOGLE_MAPS_API_KEY使用）
+  // 3) サーバーAPIフォールバック
   try {
     const res = await fetch("/api/geocode", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ address }),
+      body: JSON.stringify({ address: q }),
     })
     const data = await res.json()
     return { lat: data.lat ?? null, lng: data.lng ?? null }
