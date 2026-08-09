@@ -6,7 +6,7 @@ import { APIProvider, Map, useMap } from "@vis.gl/react-google-maps"
 import { CATEGORY_COLORS, PROJECT_CATEGORIES, normalizeCategory } from "@/types/database"
 import type { Card, MapItem, ProjectCategory, Store } from "@/types/database"
 import { BRAND_LOGOS } from "@/lib/brand-logos"
-import { getStores, updateStore } from "@/lib/database-operations"
+import { getStores, updateStore, geocodeAddress } from "@/lib/database-operations"
 import { StoreForm } from "@/components/store-form"
 
 const DEFAULT_CENTER = { lat: 36.3912, lng: 139.0608 }
@@ -49,6 +49,35 @@ const YOTO_COLORS: Record<string, string> = {
 }
 const YOTO_FALLBACK = "#cccccc"
 
+// 人口ヒートマップ（250mメッシュ）の色スケール（人口/メッシュ）。ColorBrewer Reds系。
+const POP_BUCKETS: { min: number; color: string; label: string }[] = [
+  { min: 200, color: "#a50f15", label: "200〜" },
+  { min: 100, color: "#de2d26", label: "100〜199" },
+  { min: 50, color: "#fb6a4a", label: "50〜99" },
+  { min: 25, color: "#fc9272", label: "25〜49" },
+  { min: 1, color: "#fee0d2", label: "1〜24" },
+]
+function popColor(v: number): string {
+  for (const b of POP_BUCKETS) if (v >= b.min) return b.color
+  return "#00000000"
+}
+// フィーチャの人口値（基準年PTN_20XXの最小年＝実測に近い年）を取り出す
+function popOf(props: any): { value: number; year: string | null } {
+  if (!props) return { value: 0, year: null }
+  const years = Object.keys(props)
+    .map((k) => /^PTN_(\d{4})$/.exec(k))
+    .filter(Boolean)
+    .map((m) => (m as RegExpExecArray)[1])
+    .sort()
+  const y = years[0]
+  if (y) {
+    const v = Number(props[`PTN_${y}`])
+    return { value: Number.isFinite(v) ? v : 0, year: y }
+  }
+  const v = Number(props["PT00_2020"] ?? props["PTN_2020"])
+  return { value: Number.isFinite(v) ? v : 0, year: "2020" }
+}
+
 interface MapViewProps {
   cards: (Card & { listTitle?: string })[]
 }
@@ -74,14 +103,17 @@ function stageOf(item: MapItem): { label: string; color: string } {
 }
 
 function storeToItem(s: Store): MapItem | null {
-  if (typeof s.latitude !== "number" || typeof s.longitude !== "number") return null
+  // 文字列で入っている場合も数値化。null/空/非数は座標なし扱い（住所からの補完対象）。
+  const lat = s.latitude == null ? NaN : Number(s.latitude)
+  const lng = s.longitude == null ? NaN : Number(s.longitude)
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
   return {
     id: `store-${s.id}`,
     kind: "store",
     name: s.store_name,
     category: normalizeCategory(s.category),
-    lat: s.latitude,
-    lng: s.longitude,
+    lat,
+    lng,
     address: s.address,
     brand: s.brand,
     store_code: s.store_code,
@@ -148,6 +180,40 @@ export function MapView({ cards }: MapViewProps) {
     refreshStores()
   }, [])
 
+  // 住所はあるが座標が無い店舗を、住所からジオコーディングして座標を補完（自己修復）。
+  // 一度実行した店舗は再試行しない（失敗しても無限ループしないようにする）。
+  const geocodedRef = useRef<Set<string>>(new Set())
+  useEffect(() => {
+    const targets = stores.filter(
+      (s) =>
+        s.address &&
+        (s.latitude == null || s.longitude == null || !Number.isFinite(Number(s.latitude))) &&
+        !geocodedRef.current.has(s.id),
+    )
+    if (targets.length === 0) return
+    let cancelled = false
+    ;(async () => {
+      let updated = false
+      for (const s of targets) {
+        geocodedRef.current.add(s.id)
+        const geo = await geocodeAddress(s.address as string)
+        if (cancelled) return
+        if (geo.lat != null && geo.lng != null) {
+          try {
+            await updateStore(s.id, { latitude: geo.lat, longitude: geo.lng })
+            updated = true
+          } catch (e) {
+            console.warn("[map] 店舗座標の補完に失敗:", s.store_name, e)
+          }
+        }
+      }
+      if (!cancelled && updated) refreshStores()
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [stores])
+
   const [visibleCats, setVisibleCats] = useState<Record<ProjectCategory, boolean>>({
     スプラッシュンゴー: true,
     "D-Splash": true,
@@ -161,6 +227,12 @@ export function MapView({ cards }: MapViewProps) {
   const [yotoLegend, setYotoLegend] = useState<{ counts: Record<string, number>; needZoom: boolean; noKey: boolean }>(
     { counts: {}, needZoom: false, noKey: false },
   )
+  const [showPop, setShowPop] = useState(false)
+  const [popStatus, setPopStatus] = useState<{ needZoom: boolean; noKey: boolean; year: string | null }>({
+    needZoom: false,
+    noKey: false,
+    year: null,
+  })
 
   const [editStore, setEditStore] = useState<Store | null>(null)
   const [saving, setSaving] = useState(false)
@@ -257,6 +329,7 @@ export function MapView({ cards }: MapViewProps) {
               onSelect={toggleSelect}
             />
             <YotoLayer enabled={showYoto} onLegend={setYotoLegend} />
+            <PopMeshLayer enabled={showPop} onStatus={setPopStatus} />
           </Map>
         </APIProvider>
 
@@ -290,6 +363,40 @@ export function MapView({ cards }: MapViewProps) {
                 {Object.keys(yotoLegend.counts).length === 0 && (
                   <p className="text-[11px] text-gray-400">この範囲に用途地域データがありません。</p>
                 )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 人口ヒートマップの凡例（表示ON時のみ、右下） */}
+        {showPop && (
+          <div className="absolute bottom-3 right-3 z-10 bg-white/95 rounded-lg shadow-xl border p-3 w-48">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-gray-700">
+                人口{popStatus.year ? `（${popStatus.year}年）` : ""}
+              </span>
+              <button onClick={() => setShowPop(false)} className="text-gray-400 hover:text-gray-700">
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+            {popStatus.noKey ? (
+              <p className="text-[11px] text-rose-500 leading-snug">
+                REINFOLIB_API_KEY が未設定です。環境変数を設定してください。
+              </p>
+            ) : popStatus.needZoom ? (
+              <p className="text-[11px] text-gray-500 leading-snug">もう少し地図をズームインすると表示されます。</p>
+            ) : (
+              <div className="space-y-1">
+                {POP_BUCKETS.map((b) => (
+                  <div key={b.label} className="flex items-center gap-1.5 text-[11px]">
+                    <span
+                      className="inline-block w-3 h-3 rounded-sm border border-black/10 flex-shrink-0"
+                      style={{ backgroundColor: b.color }}
+                    />
+                    <span className="flex-1 leading-tight">{b.label}</span>
+                  </div>
+                ))}
+                <p className="text-[10px] text-gray-400 pt-1">人/250mメッシュ・将来推計人口</p>
               </div>
             )}
           </div>
@@ -358,6 +465,10 @@ export function MapView({ cards }: MapViewProps) {
                 <label className="flex items-center gap-2 cursor-pointer text-sm">
                   <input type="checkbox" checked={showYoto} onChange={(e) => setShowYoto(e.target.checked)} />
                   用途地域を表示
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm mt-1.5">
+                  <input type="checkbox" checked={showPop} onChange={(e) => setShowPop(e.target.checked)} />
+                  人口ヒートマップ（250m）
                 </label>
                 <div className="text-[10px] text-gray-400 mt-1">出典：国交省 不動産情報ライブラリ（要APIキー）</div>
               </div>
@@ -645,6 +756,136 @@ function YotoLayer({
   }, [map, enabled, onLegend])
 
   return null
+}
+
+// ---- 人口ヒートマップ（不動産情報ライブラリ XKT013 将来推計人口250mメッシュ） ----
+function PopMeshLayer({
+  enabled,
+  onStatus,
+}: {
+  enabled: boolean
+  onStatus: (v: { needZoom: boolean; noKey: boolean; year: string | null }) => void
+}) {
+  const map = useMap()
+
+  useEffect(() => {
+    if (!map || typeof google === "undefined" || !enabled) return
+
+    const data = new google.maps.Data()
+    const info = new google.maps.InfoWindow()
+    data.setStyle((f) => {
+      const { value } = popOf(readProps(f))
+      return {
+        fillColor: popColor(value),
+        fillOpacity: value > 0 ? 0.55 : 0,
+        strokeWeight: 0,
+        clickable: true,
+      }
+    })
+    data.setMap(map)
+
+    const clickL = data.addListener("click", (ev: any) => {
+      const { value, year } = popOf(readProps(ev.feature))
+      info.setContent(
+        `<div style="font-size:12px;line-height:1.5"><b>${value.toLocaleString()} 人</b>（${year ?? "-"}年）<br><span style="color:#888">250mメッシュ・将来推計人口</span></div>`,
+      )
+      info.setPosition(ev.latLng)
+      info.open({ map })
+    })
+
+    const loaded = new Set<string>()
+    let curZ: number | null = null
+    let year: string | null = null
+
+    const tileX = (lng: number, z: number) => Math.floor(((lng + 180) / 360) * 2 ** z)
+    const tileY = (lat: number, z: number) => {
+      const r = (lat * Math.PI) / 180
+      return Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * 2 ** z)
+    }
+    const clearAll = () => {
+      data.forEach((f) => data.remove(f))
+      loaded.clear()
+    }
+
+    const refresh = async () => {
+      const zoom = map.getZoom() ?? 0
+      if (zoom < 11) {
+        clearAll()
+        curZ = null
+        onStatus({ needZoom: true, noKey: false, year })
+        return
+      }
+      const z = Math.min(15, Math.max(11, Math.round(zoom)))
+      if (z !== curZ) {
+        clearAll()
+        curZ = z
+      }
+      const b = map.getBounds()
+      if (!b) return
+      const ne = b.getNorthEast()
+      const sw = b.getSouthWest()
+      const x0 = tileX(sw.lng(), z),
+        x1 = tileX(ne.lng(), z)
+      const y0 = tileY(ne.lat(), z),
+        y1 = tileY(sw.lat(), z)
+      if ((x1 - x0 + 1) * (y1 - y0 + 1) > 60) {
+        onStatus({ needZoom: true, noKey: false, year })
+        return
+      }
+      let sawNoKey = false
+      const jobs: Promise<void>[] = []
+      for (let x = x0; x <= x1; x++) {
+        for (let y = y0; y <= y1; y++) {
+          const key = `${z}/${x}/${y}`
+          if (loaded.has(key)) continue
+          loaded.add(key)
+          jobs.push(
+            fetch(`/api/pop-mesh?z=${z}&x=${x}&y=${y}`)
+              .then((r) => r.json())
+              .then((jj) => {
+                if (jj && jj.error) {
+                  if (jj.error === "NO_KEY") sawNoKey = true
+                  return
+                }
+                if (jj && jj.type && Array.isArray(jj.features)) {
+                  if (!year && jj.features[0]) year = popOf(jj.features[0].properties).year
+                  try {
+                    data.addGeoJson(jj)
+                  } catch {
+                    /* 空幾何は無視 */
+                  }
+                }
+              })
+              .catch(() => {}),
+          )
+        }
+      }
+      await Promise.all(jobs)
+      onStatus({ needZoom: false, noKey: sawNoKey, year })
+    }
+
+    const idleL = map.addListener("idle", refresh)
+    refresh()
+
+    return () => {
+      google.maps.event.removeListener(idleL)
+      google.maps.event.removeListener(clickL)
+      info.close()
+      data.setMap(null)
+    }
+  }, [map, enabled, onStatus])
+
+  return null
+}
+
+// Data.Feature から properties を取り出す（setStyle/クリック共通）
+function readProps(f: any): any {
+  const p: any = {}
+  if (!f || typeof f.forEachProperty !== "function") return p
+  f.forEachProperty((val: any, key: string) => {
+    p[key] = val
+  })
+  return p
 }
 
 // ---- ArmBox風の複数店舗 比較パネル ----
