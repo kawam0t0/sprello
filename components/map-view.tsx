@@ -5,6 +5,7 @@ import { X, Pencil, Menu } from "lucide-react"
 import { APIProvider, Map, useMap } from "@vis.gl/react-google-maps"
 import { CATEGORY_COLORS, PROJECT_CATEGORIES, normalizeCategory } from "@/types/database"
 import type { Card, MapItem, ProjectCategory, Store } from "@/types/database"
+import { BRAND_LOGOS } from "@/lib/brand-logos"
 import { getStores, updateStore } from "@/lib/database-operations"
 import { StoreForm } from "@/components/store-form"
 
@@ -53,7 +54,6 @@ interface MapViewProps {
 }
 
 // ステージ（OPEN/Aヨミ/Bヨミ/Cヨミ/未確定）の色分け
-const STAGE_ORDER = ["OPEN", "Aヨミ", "Bヨミ", "Cヨミ", "未確定"]
 const STAGE_COLORS: Record<string, string> = {
   OPEN: "#16a34a",
   Aヨミ: "#2563eb",
@@ -353,23 +353,6 @@ export function MapView({ cards }: MapViewProps) {
                 </label>
               </div>
 
-              <div>
-                <div className="text-xs font-semibold text-gray-500 mb-2">ステージ（ピンのラベル）</div>
-                <div className="grid grid-cols-2 gap-1">
-                  {STAGE_ORDER.map((s) => (
-                    <div key={s} className="flex items-center gap-1.5 text-xs">
-                      <span
-                        className="inline-block px-1.5 py-0.5 rounded text-white text-[10px] font-bold"
-                        style={{ backgroundColor: STAGE_COLORS[s] }}
-                      >
-                        {s}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-                <div className="text-[10px] text-gray-400 mt-1">枠の色＝ブランド、ラベル＝進捗</div>
-              </div>
-
               <div className="border-t pt-2">
                 <div className="text-xs font-semibold text-gray-500 mb-2">地図レイヤ</div>
                 <label className="flex items-center gap-2 cursor-pointer text-sm">
@@ -415,9 +398,13 @@ function buildPin(
   stageLabel: string,
   stageColor: string,
   selected: boolean,
+  logo: string,
 ): { url: string; w: number; h: number } {
+  const logoS = 22 // ブランドロゴ（左端）
+  const logoX = 6
+  const logoY = 4
   const chipTextW = stageLabel.length * 11 + 12 // ステージ文字（OPEN/Aヨミ等）
-  const chipX = 8
+  const chipX = logoX + logoS + 6
   const chipW = chipTextW
   const nameX = chipX + chipW + 7
   const nameW = Math.max(name.length * 13, 16)
@@ -427,8 +414,12 @@ function buildPin(
   const sw = selected ? 3 : 2
   const cx = w / 2
   const svg =
-    `<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${h}' viewBox='0 0 ${w} ${h}'>` +
+    `<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' width='${w}' height='${h}' viewBox='0 0 ${w} ${h}'>` +
+    `<defs><clipPath id='lc'><rect x='${logoX}' y='${logoY}' width='${logoS}' height='${logoS}' rx='5'/></clipPath></defs>` +
     `<rect x='1.5' y='1.5' rx='14' ry='14' width='${w - 3}' height='28' fill='white' stroke='${stroke}' stroke-width='${sw}'/>` +
+    // ブランドロゴ
+    `<image x='${logoX}' y='${logoY}' width='${logoS}' height='${logoS}' xlink:href='${logo}' clip-path='url(#lc)' preserveAspectRatio='xMidYMid meet'/>` +
+    `<rect x='${logoX}' y='${logoY}' width='${logoS}' height='${logoS}' rx='5' fill='none' stroke='#e5e7eb' stroke-width='1'/>` +
     // ステージチップ
     `<rect x='${chipX}' y='5' rx='6' ry='6' width='${chipW}' height='19' fill='${stageColor}'/>` +
     `<text x='${chipX + chipW / 2}' y='18.5' text-anchor='middle' font-family='sans-serif' font-size='11' font-weight='700' fill='white'>${escapeXml(stageLabel)}</text>` +
@@ -467,7 +458,7 @@ function MapOverlays({
       const color = CATEGORY_COLORS[it.category]
       const selected = selectedIds.includes(it.id)
       const st = stageOf(it)
-      const pin = buildPin(shortName(it.name), color, st.label, st.color, selected)
+      const pin = buildPin(shortName(it.name), color, st.label, st.color, selected, BRAND_LOGOS[it.category])
       const marker = new google.maps.Marker({
         position: { lat: it.lat, lng: it.lng },
         map,
