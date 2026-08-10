@@ -248,6 +248,9 @@ export function MapView({ cards }: MapViewProps) {
     year: string | null
     total: number | null
   }>({ needCenter: true, noKey: false, year: null, total: null })
+  // 距離測定
+  const [measuring, setMeasuring] = useState(false)
+  const [measurePts, setMeasurePts] = useState<{ lat: number; lng: number }[]>([])
 
   const [editStore, setEditStore] = useState<Store | null>(null)
   const [saving, setSaving] = useState(false)
@@ -345,10 +348,15 @@ export function MapView({ cards }: MapViewProps) {
             />
             <YotoLayer enabled={showYoto} onLegend={setYotoLegend} />
             <PopMeshLayer
-              enabled={showPop}
+              enabled={showPop && !measuring}
               center={popCenter}
               onPickCenter={(c) => setPopCenter(c)}
               onStatus={setPopStatus}
+            />
+            <MeasureLayer
+              measuring={measuring}
+              points={measurePts}
+              onAdd={(pt) => setMeasurePts((p) => [...p, pt])}
             />
           </Map>
         </APIProvider>
@@ -444,6 +452,36 @@ export function MapView({ cards }: MapViewProps) {
           </div>
         )}
 
+        {/* 距離測定パネル（測定中 or 計測点がある時） */}
+        {(measuring || measurePts.length > 0) && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 bg-white/95 rounded-lg shadow-xl border px-4 py-2 flex items-center gap-4">
+            <div>
+              <div className="text-[10px] text-gray-500 leading-none">総距離</div>
+              <div className="text-lg font-bold text-gray-800 leading-tight">
+                {formatDist(totalDistance(measurePts))}
+              </div>
+            </div>
+            <div className="text-[11px] text-gray-500 max-w-[180px] leading-tight">
+              {measuring ? "地図をクリックで地点を追加。もう一度チェックを外すと確定。" : "測定を再開するには「距離を測定」をONに。"}
+            </div>
+            <button
+              onClick={() => setMeasurePts([])}
+              className="text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded"
+            >
+              クリア
+            </button>
+            <button
+              onClick={() => {
+                setMeasuring(false)
+                setMeasurePts([])
+              }}
+              className="text-gray-400 hover:text-gray-700"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* ハンバーガー：カテゴリ表示・同心円 */}
         <div className="absolute top-3 left-3 z-10">
           <button
@@ -513,6 +551,17 @@ export function MapView({ cards }: MapViewProps) {
                   人口ヒートマップ（250m）
                 </label>
                 <div className="text-[10px] text-gray-400 mt-1">出典：国交省 不動産情報ライブラリ（要APIキー）</div>
+                <label className="flex items-center gap-2 cursor-pointer text-sm mt-2 pt-2 border-t">
+                  <input
+                    type="checkbox"
+                    checked={measuring}
+                    onChange={(e) => {
+                      setMeasuring(e.target.checked)
+                      if (e.target.checked) setFilterOpen(false)
+                    }}
+                  />
+                  距離を測定
+                </label>
               </div>
 
               <div className="text-[11px] text-gray-400 border-t pt-2">
@@ -973,6 +1022,91 @@ function readProps(f: any): any {
     p[key] = val
   })
   return p
+}
+
+// ---- 距離測定 ----
+function haversineM(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
+  const R = 6371000,
+    toR = (d: number) => (d * Math.PI) / 180
+  const dLat = toR(b.lat - a.lat),
+    dLng = toR(b.lng - a.lng)
+  const x =
+    Math.sin(dLat / 2) ** 2 + Math.cos(toR(a.lat)) * Math.cos(toR(b.lat)) * Math.sin(dLng / 2) ** 2
+  return 2 * R * Math.asin(Math.sqrt(x))
+}
+function totalDistance(pts: { lat: number; lng: number }[]): number {
+  let d = 0
+  for (let i = 0; i + 1 < pts.length; i++) d += haversineM(pts[i], pts[i + 1])
+  return d
+}
+function formatDist(m: number): string {
+  if (m < 1000) return `${Math.round(m)} m`
+  return `${(m / 1000).toFixed(2)} km`
+}
+
+function MeasureLayer({
+  measuring,
+  points,
+  onAdd,
+}: {
+  measuring: boolean
+  points: { lat: number; lng: number }[]
+  onAdd: (pt: { lat: number; lng: number }) => void
+}) {
+  const map = useMap()
+
+  // 折れ線＋頂点マーカーの描画
+  useEffect(() => {
+    if (!map || typeof google === "undefined") return
+    const line = new google.maps.Polyline({
+      map,
+      path: points,
+      strokeColor: "#1b4da0",
+      strokeWeight: 3,
+      strokeOpacity: 0.95,
+    })
+    const dots = points.map(
+      (p, i) =>
+        new google.maps.Marker({
+          map,
+          position: p,
+          zIndex: 1000,
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 5,
+            fillColor: "#fff",
+            fillOpacity: 1,
+            strokeColor: "#1b4da0",
+            strokeWeight: 2,
+          },
+          // 区間ごとの累計距離を小さく表示
+          label:
+            i > 0
+              ? {
+                  text: formatDist(totalDistance(points.slice(0, i + 1))),
+                  fontSize: "10px",
+                  fontWeight: "700",
+                  className: "",
+                }
+              : undefined,
+        }),
+    )
+    return () => {
+      line.setMap(null)
+      dots.forEach((d) => d.setMap(null))
+    }
+  }, [map, points])
+
+  // 測定中は地図クリックで点を追加
+  useEffect(() => {
+    if (!map || typeof google === "undefined" || !measuring) return
+    const l = map.addListener("click", (ev: any) => {
+      if (ev.latLng) onAdd({ lat: ev.latLng.lat(), lng: ev.latLng.lng() })
+    })
+    return () => google.maps.event.removeListener(l)
+  }, [map, measuring, onAdd])
+
+  return null
 }
 
 // ---- ArmBox風の複数店舗 比較パネル ----
