@@ -452,17 +452,44 @@ export function MapView({ cards }: MapViewProps) {
           </div>
         )}
 
-        {/* 距離測定パネル（測定中 or 計測点がある時） */}
+        {/* 面積/距離 測定パネル（測定中 or 計測点がある時） */}
         {(measuring || measurePts.length > 0) && (
           <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 bg-white/95 rounded-lg shadow-xl border px-4 py-2 flex items-center gap-4">
-            <div>
-              <div className="text-[10px] text-gray-500 leading-none">総距離</div>
-              <div className="text-lg font-bold text-gray-800 leading-tight">
-                {formatDist(totalDistance(measurePts))}
+            {measurePts.length >= 3 ? (
+              <>
+                <div>
+                  <div className="text-[10px] text-gray-500 leading-none">面積</div>
+                  <div className="text-lg font-bold text-gray-800 leading-tight">
+                    {(polygonAreaM2(measurePts) / SQM_PER_TSUBO).toLocaleString(undefined, {
+                      maximumFractionDigits: 1,
+                    })}{" "}
+                    坪
+                  </div>
+                  <div className="text-[11px] text-gray-500 leading-tight">
+                    {Math.round(polygonAreaM2(measurePts)).toLocaleString()} ㎡
+                  </div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-gray-500 leading-none">周囲</div>
+                  <div className="text-sm font-semibold text-gray-700 leading-tight">
+                    {formatDist(perimeterM(measurePts))}
+                  </div>
+                </div>
+              </>
+            ) : measurePts.length === 2 ? (
+              <div>
+                <div className="text-[10px] text-gray-500 leading-none">距離</div>
+                <div className="text-lg font-bold text-gray-800 leading-tight">
+                  {formatDist(totalDistance(measurePts))}
+                </div>
               </div>
-            </div>
-            <div className="text-[11px] text-gray-500 max-w-[180px] leading-tight">
-              {measuring ? "地図をクリックで地点を追加。もう一度チェックを外すと確定。" : "測定を再開するには「距離を測定」をONに。"}
+            ) : (
+              <div className="text-[11px] text-gray-500 leading-tight">
+                地図をクリックして頂点を追加（3点以上で面積、2点で距離）
+              </div>
+            )}
+            <div className="text-[11px] text-gray-400 max-w-[150px] leading-tight">
+              {measuring ? "クリックで頂点を追加。囲むと自動で閉じます。" : "再開は「距離を測定」をON。"}
             </div>
             <button
               onClick={() => setMeasurePts([])}
@@ -560,7 +587,7 @@ export function MapView({ cards }: MapViewProps) {
                       if (e.target.checked) setFilterOpen(false)
                     }}
                   />
-                  距離を測定
+                  距離・面積を測定
                 </label>
               </div>
 
@@ -1039,6 +1066,28 @@ function totalDistance(pts: { lat: number; lng: number }[]): number {
   for (let i = 0; i + 1 < pts.length; i++) d += haversineM(pts[i], pts[i + 1])
   return d
 }
+// 閉じた図形の周囲長（頂点3つ以上なら最後→最初の辺も加える）
+function perimeterM(pts: { lat: number; lng: number }[]): number {
+  let d = totalDistance(pts)
+  if (pts.length >= 3) d += haversineM(pts[pts.length - 1], pts[0])
+  return d
+}
+// ポリゴン面積(㎡)。局所的な正距円筒投影＋シューレース公式（小面積で十分正確）
+function polygonAreaM2(pts: { lat: number; lng: number }[]): number {
+  if (pts.length < 3) return 0
+  const latRef = (pts.reduce((s, p) => s + p.lat, 0) / pts.length) * (Math.PI / 180)
+  const mLat = 111320
+  const mLng = 111320 * Math.cos(latRef)
+  const xy = pts.map((p) => [p.lng * mLng, p.lat * mLat])
+  let a = 0
+  for (let i = 0; i < xy.length; i++) {
+    const [x1, y1] = xy[i]
+    const [x2, y2] = xy[(i + 1) % xy.length]
+    a += x1 * y2 - x2 * y1
+  }
+  return Math.abs(a) / 2
+}
+const SQM_PER_TSUBO = 3.305785 // 1坪 = 400/121 ㎡
 function formatDist(m: number): string {
   if (m < 1000) return `${Math.round(m)} m`
   return `${(m / 1000).toFixed(2)} km`
@@ -1055,18 +1104,35 @@ function MeasureLayer({
 }) {
   const map = useMap()
 
-  // 折れ線＋頂点マーカーの描画
+  // 図形（3点以上は自動で閉じるポリゴン、2点以下は線）＋頂点マーカーの描画
   useEffect(() => {
     if (!map || typeof google === "undefined") return
-    const line = new google.maps.Polyline({
-      map,
-      path: points,
-      strokeColor: "#1b4da0",
-      strokeWeight: 3,
-      strokeOpacity: 0.95,
-    })
+    const overlays: (google.maps.Polygon | google.maps.Polyline)[] = []
+    if (points.length >= 3) {
+      overlays.push(
+        new google.maps.Polygon({
+          map,
+          paths: points,
+          strokeColor: "#1b4da0",
+          strokeWeight: 3,
+          strokeOpacity: 0.95,
+          fillColor: "#1b4da0",
+          fillOpacity: 0.15,
+        }),
+      )
+    } else if (points.length >= 2) {
+      overlays.push(
+        new google.maps.Polyline({
+          map,
+          path: points,
+          strokeColor: "#1b4da0",
+          strokeWeight: 3,
+          strokeOpacity: 0.95,
+        }),
+      )
+    }
     const dots = points.map(
-      (p, i) =>
+      (p) =>
         new google.maps.Marker({
           map,
           position: p,
@@ -1079,20 +1145,10 @@ function MeasureLayer({
             strokeColor: "#1b4da0",
             strokeWeight: 2,
           },
-          // 区間ごとの累計距離を小さく表示
-          label:
-            i > 0
-              ? {
-                  text: formatDist(totalDistance(points.slice(0, i + 1))),
-                  fontSize: "10px",
-                  fontWeight: "700",
-                  className: "",
-                }
-              : undefined,
         }),
     )
     return () => {
-      line.setMap(null)
+      overlays.forEach((o) => o.setMap(null))
       dots.forEach((d) => d.setMap(null))
     }
   }, [map, points])
