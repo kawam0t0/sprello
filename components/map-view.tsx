@@ -6,7 +6,7 @@ import { APIProvider, Map, useMap } from "@vis.gl/react-google-maps"
 import { CATEGORY_COLORS, PROJECT_CATEGORIES, normalizeCategory } from "@/types/database"
 import type { Card, MapItem, ProjectCategory, Store } from "@/types/database"
 import { BRAND_LOGOS } from "@/lib/brand-logos"
-import { getStores, updateStore, geocodeAddress } from "@/lib/database-operations"
+import { getStores, updateStore, geocodeAddress, fetchTraffic } from "@/lib/database-operations"
 import { StoreForm } from "@/components/store-form"
 
 const DEFAULT_CENTER = { lat: 36.3912, lng: 139.0608 }
@@ -310,6 +310,7 @@ export function MapView({ cards }: MapViewProps) {
               onSelect={toggleSelect}
             />
             <YotoLayer enabled={showYoto} onLegend={setYotoLegend} />
+            <SpotInfoLayer enabled={!measuring} />
             <MeasureLayer
               measuring={measuring}
               points={measurePts}
@@ -825,6 +826,58 @@ function YotoLayer({
       data.setMap(null)
     }
   }, [map, enabled, onLegend])
+
+  return null
+}
+
+// ---- 地点クリックでその場の指標（交通量・市区町村の年収）をポップアップ ----
+function SpotInfoLayer({ enabled }: { enabled: boolean }) {
+  const map = useMap()
+
+  useEffect(() => {
+    if (!map || typeof google === "undefined" || !enabled) return
+    const info = new google.maps.InfoWindow()
+
+    const l = map.addListener("click", async (ev: any) => {
+      if (!ev.latLng) return
+      const lat = ev.latLng.lat()
+      const lng = ev.latLng.lng()
+      info.setContent('<div style="font-size:12px;padding:2px 4px">読み込み中…</div>')
+      info.setPosition({ lat, lng })
+      info.open({ map })
+
+      const [t, m] = await Promise.all([
+        fetchTraffic(lat, lng),
+        fetch(`/api/revgeo?lat=${lat}&lng=${lng}`)
+          .then((r) => r.json())
+          .catch(() => null),
+      ])
+
+      const area = (m && (m.city || m.town)) || "この地点"
+      const traffic =
+        t && "found" in t && t.found
+          ? `${t.traffic_12h.toLocaleString()} 台 <span style="color:#888">（最寄り${t.road_class}・約${(t.distance_m / 1000).toFixed(1)}km）</span>`
+          : "近くに調査区間なし"
+      const income =
+        m && m.income_household != null
+          ? `${Number(m.income_household).toLocaleString()} 万円 <span style="color:#888">（推計）</span>`
+          : "データ未取得"
+
+      info.setContent(
+        `<div style="font-size:12px;line-height:1.7;min-width:210px;max-width:260px">` +
+          `<div style="font-weight:700;font-size:13px;color:#111">${escapeXml(String(area))} 付近</div>` +
+          `<div style="margin-top:4px;display:flex;justify-content:space-between;gap:10px"><span style="color:#888">日中12h交通量</span><span style="font-weight:600;color:#222">${traffic}</span></div>` +
+          `<div style="display:flex;justify-content:space-between;gap:10px"><span style="color:#888">推計世帯年収</span><span style="font-weight:600;color:#222">${income}</span></div>` +
+          `<div style="color:#aaa;font-size:10px;margin-top:5px">概算（交通量=センサスR3／世帯年収=市区町村の課税所得からの推計）</div>` +
+          `</div>`,
+      )
+    })
+
+    return () => {
+      google.maps.event.removeListener(l)
+      info.close()
+    }
+  }, [map, enabled])
 
   return null
 }
