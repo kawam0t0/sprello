@@ -49,35 +49,6 @@ const YOTO_COLORS: Record<string, string> = {
 }
 const YOTO_FALLBACK = "#cccccc"
 
-// 人口ヒートマップ（250mメッシュ）の色スケール（人口/メッシュ）。ColorBrewer Reds系。
-const POP_BUCKETS: { min: number; color: string; label: string }[] = [
-  { min: 200, color: "#a50f15", label: "200〜" },
-  { min: 100, color: "#de2d26", label: "100〜199" },
-  { min: 50, color: "#fb6a4a", label: "50〜99" },
-  { min: 25, color: "#fc9272", label: "25〜49" },
-  { min: 1, color: "#fee0d2", label: "1〜24" },
-]
-function popColor(v: number): string {
-  for (const b of POP_BUCKETS) if (v >= b.min) return b.color
-  return "#00000000"
-}
-// フィーチャの人口値（基準年PTN_20XXの最小年＝実測に近い年）を取り出す
-function popOf(props: any): { value: number; year: string | null } {
-  if (!props) return { value: 0, year: null }
-  const years = Object.keys(props)
-    .map((k) => /^PTN_(\d{4})$/.exec(k))
-    .filter(Boolean)
-    .map((m) => (m as RegExpExecArray)[1])
-    .sort()
-  const y = years[0]
-  if (y) {
-    const v = Number(props[`PTN_${y}`])
-    return { value: Number.isFinite(v) ? v : 0, year: y }
-  }
-  const v = Number(props["PT00_2020"] ?? props["PTN_2020"])
-  return { value: Number.isFinite(v) ? v : 0, year: "2020" }
-}
-
 interface MapViewProps {
   cards: (Card & { listTitle?: string })[]
 }
@@ -240,14 +211,6 @@ export function MapView({ cards }: MapViewProps) {
   const [yotoLegend, setYotoLegend] = useState<{ counts: Record<string, number>; needZoom: boolean; noKey: boolean }>(
     { counts: {}, needZoom: false, noKey: false },
   )
-  const [showPop, setShowPop] = useState(false)
-  const [popCenter, setPopCenter] = useState<{ lat: number; lng: number } | null>(null)
-  const [popStatus, setPopStatus] = useState<{
-    needCenter: boolean
-    noKey: boolean
-    year: string | null
-    total: number | null
-  }>({ needCenter: true, noKey: false, year: null, total: null })
   // 距離測定
   const [measuring, setMeasuring] = useState(false)
   const [measurePts, setMeasurePts] = useState<{ lat: number; lng: number }[]>([])
@@ -347,12 +310,6 @@ export function MapView({ cards }: MapViewProps) {
               onSelect={toggleSelect}
             />
             <YotoLayer enabled={showYoto} onLegend={setYotoLegend} />
-            <PopMeshLayer
-              enabled={showPop && !measuring}
-              center={popCenter}
-              onPickCenter={(c) => setPopCenter(c)}
-              onStatus={setPopStatus}
-            />
             <MeasureLayer
               measuring={measuring}
               points={measurePts}
@@ -391,62 +348,6 @@ export function MapView({ cards }: MapViewProps) {
                 {Object.keys(yotoLegend.counts).length === 0 && (
                   <p className="text-[11px] text-gray-400">この範囲に用途地域データがありません。</p>
                 )}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 人口ヒートマップの凡例（表示ON時のみ、右下） */}
-        {showPop && (
-          <div className="absolute bottom-3 right-3 z-10 bg-white/95 rounded-lg shadow-xl border p-3 w-52">
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-bold text-gray-700">
-                人口ヒートマップ{popStatus.year ? `（${popStatus.year}年）` : ""}
-              </span>
-              <button
-                onClick={() => {
-                  setShowPop(false)
-                  setPopCenter(null)
-                }}
-                className="text-gray-400 hover:text-gray-700"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            </div>
-            {popStatus.noKey ? (
-              <p className="text-[11px] text-rose-500 leading-snug">
-                REINFOLIB_API_KEY が未設定です。環境変数を設定してください。
-              </p>
-            ) : popStatus.needCenter ? (
-              <p className="text-[11px] text-gray-500 leading-snug">
-                地図をクリックして分析地点を選ぶと、その半径2km圏内の人口を表示します。
-              </p>
-            ) : (
-              <div className="space-y-1">
-                {popStatus.total != null && (
-                  <div className="mb-1 pb-1.5 border-b">
-                    <div className="text-[10px] text-gray-500">半径2km圏内 合計</div>
-                    <div className="text-sm font-bold text-gray-800">
-                      {popStatus.total.toLocaleString()} 人
-                    </div>
-                  </div>
-                )}
-                {POP_BUCKETS.map((b) => (
-                  <div key={b.label} className="flex items-center gap-1.5 text-[11px]">
-                    <span
-                      className="inline-block w-3 h-3 rounded-sm border border-black/10 flex-shrink-0"
-                      style={{ backgroundColor: b.color }}
-                    />
-                    <span className="flex-1 leading-tight">{b.label}</span>
-                  </div>
-                ))}
-                <p className="text-[10px] text-gray-400 pt-1">人/250mメッシュ・将来推計人口</p>
-                <button
-                  onClick={() => setPopCenter(null)}
-                  className="mt-1 text-[11px] text-[#1b4da0] hover:underline"
-                >
-                  別の地点を選ぶ
-                </button>
               </div>
             )}
           </div>
@@ -573,10 +474,6 @@ export function MapView({ cards }: MapViewProps) {
                   <input type="checkbox" checked={showYoto} onChange={(e) => setShowYoto(e.target.checked)} />
                   用途地域を表示
                 </label>
-                <label className="flex items-center gap-2 cursor-pointer text-sm mt-1.5">
-                  <input type="checkbox" checked={showPop} onChange={(e) => setShowPop(e.target.checked)} />
-                  人口ヒートマップ（250m）
-                </label>
                 <div className="text-[10px] text-gray-400 mt-1">出典：国交省 不動産情報ライブラリ（要APIキー）</div>
                 <label className="flex items-center gap-2 cursor-pointer text-sm mt-2 pt-2 border-t">
                   <input
@@ -619,6 +516,40 @@ function shortName(name: string): string {
 
 function escapeXml(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+}
+
+// ピンクリック時のポップアップ内容（主要指標をパッと表示）
+function infoHtml(it: MapItem): string {
+  const st = stageOf(it)
+  const brand = it.brand || it.category || ""
+  const num = (v: number | null | undefined, unit = "") =>
+    v == null ? "—" : Number(v).toLocaleString() + unit
+  const rows: [string, string][] = [
+    ["ランク", it.rank || "—"],
+    ["日中12h交通量", num(it.traffic_12h, " 台")],
+    ["世帯年収", num(it.household_income, " 万円")],
+    ["周辺充実度", it.surrounding_score == null ? "—" : String(it.surrounding_score)],
+    ["通過速度", it.passing_speed == null ? "—" : String(it.passing_speed)],
+    ["広さ", num(it.size_tsubo, " 坪")],
+    [
+      "商圏人口 1/2/5km",
+      [it.pop_1km, it.pop_2km, it.pop_5km].map((p) => (p == null ? "—" : Number(p).toLocaleString())).join(" / "),
+    ],
+  ]
+  const rowsHtml = rows
+    .map(
+      ([l, v]) =>
+        `<div style="display:flex;justify-content:space-between;gap:12px"><span style="color:#888">${l}</span><span style="font-weight:600;color:#222">${escapeXml(v)}</span></div>`,
+    )
+    .join("")
+  return (
+    `<div style="font-size:12px;line-height:1.7;min-width:190px;max-width:240px">` +
+    `<div style="font-weight:700;font-size:13px;color:#111">${escapeXml(it.name)}</div>` +
+    `<div style="margin:2px 0 6px"><span style="background:${st.color};color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:6px">${escapeXml(st.label)}</span> <span style="color:#555;font-size:11px">${escapeXml(brand)}</span></div>` +
+    rowsHtml +
+    (it.address ? `<div style="color:#888;font-size:11px;margin-top:4px">${escapeXml(it.address)}</div>` : "") +
+    `</div>`
+  )
 }
 
 function buildPin(
@@ -682,6 +613,7 @@ function MapOverlays({
     if (!map || typeof google === "undefined") return
     markersRef.current.forEach((m) => m.setMap(null))
     markersRef.current = []
+    const info = new google.maps.InfoWindow()
 
     items.forEach((it) => {
       const color = CATEGORY_COLORS[it.category]
@@ -699,11 +631,32 @@ function MapOverlays({
           anchor: new google.maps.Point(pin.w / 2, pin.h),
         },
       })
-      marker.addListener("click", () => onSelect(it))
+      // クリックで主要指標のポップアップ（交通量・世帯年収・商圏人口など）を表示
+      marker.addListener("click", () => {
+        const node = document.createElement("div")
+        node.innerHTML = infoHtml(it)
+        const btn = document.createElement("button")
+        const isSel = selectedIds.includes(it.id)
+        btn.textContent = isSel ? "比較から外す" : "比較に追加"
+        btn.style.cssText =
+          "margin-top:8px;width:100%;padding:5px 8px;border-radius:6px;border:1px solid #1b4da0;background:" +
+          (isSel ? "#fff" : "#1b4da0") +
+          ";color:" +
+          (isSel ? "#1b4da0" : "#fff") +
+          ";font-size:12px;font-weight:600;cursor:pointer"
+        btn.addEventListener("click", () => {
+          onSelect(it)
+          info.close()
+        })
+        node.appendChild(btn)
+        info.setContent(node)
+        info.open({ map, anchor: marker })
+      })
       markersRef.current.push(marker)
     })
 
     return () => {
+      info.close()
       markersRef.current.forEach((m) => m.setMap(null))
       markersRef.current = []
     }
@@ -874,181 +827,6 @@ function YotoLayer({
   }, [map, enabled, onLegend])
 
   return null
-}
-
-// ---- 人口ヒートマップ（不動産情報ライブラリ XKT013 将来推計人口250mメッシュ） ----
-// 地図クリックで分析地点を選び、その半径2km圏内のみ250mメッシュ人口を表示する。
-const POP_RADIUS_M = 2000
-
-function featureCentroid(geom: any): [number, number] | null {
-  const ring =
-    geom?.type === "Polygon"
-      ? geom.coordinates?.[0]
-      : geom?.type === "MultiPolygon"
-        ? geom.coordinates?.[0]?.[0]
-        : null
-  if (!Array.isArray(ring) || ring.length === 0) return null
-  let sx = 0,
-    sy = 0,
-    n = 0
-  for (const pt of ring) {
-    if (Array.isArray(pt)) {
-      sx += pt[0]
-      sy += pt[1]
-      n++
-    }
-  }
-  return n ? [sx / n, sy / n] : null
-}
-
-function PopMeshLayer({
-  enabled,
-  center,
-  onPickCenter,
-  onStatus,
-}: {
-  enabled: boolean
-  center: { lat: number; lng: number } | null
-  onPickCenter: (c: { lat: number; lng: number }) => void
-  onStatus: (v: { needCenter: boolean; noKey: boolean; year: string | null; total: number | null }) => void
-}) {
-  const map = useMap()
-
-  // 地図クリックで分析地点を選ぶ（有効時のみ）
-  useEffect(() => {
-    if (!map || typeof google === "undefined" || !enabled) return
-    const l = map.addListener("click", (ev: any) => {
-      if (ev.latLng) onPickCenter({ lat: ev.latLng.lat(), lng: ev.latLng.lng() })
-    })
-    return () => google.maps.event.removeListener(l)
-  }, [map, enabled, onPickCenter])
-
-  // 選択地点の2km圏の人口メッシュを描画
-  useEffect(() => {
-    if (!map || typeof google === "undefined" || !enabled) return
-    if (!center) {
-      onStatus({ needCenter: true, noKey: false, year: null, total: null })
-      return
-    }
-
-    const data = new google.maps.Data()
-    const info = new google.maps.InfoWindow()
-    data.setStyle((f) => {
-      const { value } = popOf(readProps(f))
-      return { fillColor: popColor(value), fillOpacity: value > 0 ? 0.6 : 0, strokeWeight: 0, clickable: true }
-    })
-    data.setMap(map)
-
-    const circle = new google.maps.Circle({
-      map,
-      center,
-      radius: POP_RADIUS_M,
-      strokeColor: "#1b4da0",
-      strokeOpacity: 0.9,
-      strokeWeight: 2,
-      fillOpacity: 0,
-      clickable: false,
-    })
-
-    const clickL = data.addListener("click", (ev: any) => {
-      const { value, year } = popOf(readProps(ev.feature))
-      info.setContent(
-        `<div style="font-size:12px;line-height:1.5"><b>${value.toLocaleString()} 人</b>（${year ?? "-"}年）<br><span style="color:#888">250mメッシュ・将来推計人口</span></div>`,
-      )
-      info.setPosition(ev.latLng)
-      info.open({ map })
-    })
-
-    const distM = (aLat: number, aLng: number, bLat: number, bLng: number) => {
-      const R = 6371000,
-        toR = (d: number) => (d * Math.PI) / 180
-      const dLat = toR(bLat - aLat),
-        dLng = toR(bLng - aLng)
-      const x =
-        Math.sin(dLat / 2) ** 2 + Math.cos(toR(aLat)) * Math.cos(toR(bLat)) * Math.sin(dLng / 2) ** 2
-      return 2 * R * Math.asin(Math.sqrt(x))
-    }
-    const tileX = (lng: number, z: number) => Math.floor(((lng + 180) / 360) * 2 ** z)
-    const tileY = (lat: number, z: number) => {
-      const r = (lat * Math.PI) / 180
-      return Math.floor(((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2) * 2 ** z)
-    }
-
-    let cancelled = false
-    ;(async () => {
-      const z = 14 // 250mメッシュが読める固定ズーム
-      const latD = POP_RADIUS_M / 111000 + 0.005
-      const lngD = POP_RADIUS_M / (111000 * Math.cos((center.lat * Math.PI) / 180)) + 0.005
-      const x0 = tileX(center.lng - lngD, z),
-        x1 = tileX(center.lng + lngD, z)
-      const y0 = tileY(center.lat + latD, z),
-        y1 = tileY(center.lat - latD, z)
-
-      let sawNoKey = false
-      let year: string | null = null
-      let total = 0
-      const jobs: Promise<void>[] = []
-      for (let x = x0; x <= x1; x++) {
-        for (let y = y0; y <= y1; y++) {
-          jobs.push(
-            fetch(`/api/pop-mesh?z=${z}&x=${x}&y=${y}`)
-              .then((r) => r.json())
-              .then((jj) => {
-                if (jj && jj.error) {
-                  if (jj.error === "NO_KEY") sawNoKey = true
-                  return
-                }
-                if (!jj || !Array.isArray(jj.features)) return
-                // 中心から2km圏内のメッシュだけ採用
-                const kept = jj.features.filter((f: any) => {
-                  const c = featureCentroid(f.geometry)
-                  return c && distM(center.lat, center.lng, c[1], c[0]) <= POP_RADIUS_M
-                })
-                for (const f of kept) {
-                  const p = popOf(f.properties)
-                  if (!year) year = p.year
-                  total += p.value
-                }
-                if (kept.length) {
-                  try {
-                    data.addGeoJson({ type: "FeatureCollection", features: kept })
-                  } catch {
-                    /* 空幾何は無視 */
-                  }
-                }
-              })
-              .catch(() => {}),
-          )
-        }
-      }
-      await Promise.all(jobs)
-      if (cancelled) return
-      onStatus({ needCenter: false, noKey: sawNoKey, year, total: Math.round(total) })
-    })()
-
-    // 選択地点へ寄せる
-    map.panTo(center)
-
-    return () => {
-      cancelled = true
-      google.maps.event.removeListener(clickL)
-      info.close()
-      circle.setMap(null)
-      data.setMap(null)
-    }
-  }, [map, enabled, center, onStatus])
-
-  return null
-}
-
-// Data.Feature から properties を取り出す（setStyle/クリック共通）
-function readProps(f: any): any {
-  const p: any = {}
-  if (!f || typeof f.forEachProperty !== "function") return p
-  f.forEachProperty((val: any, key: string) => {
-    p[key] = val
-  })
-  return p
 }
 
 // ---- 距離測定 ----
