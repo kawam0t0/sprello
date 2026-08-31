@@ -1,9 +1,9 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Pencil } from "lucide-react"
+import { Pencil, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
-import { getStores, updateStore } from "@/lib/database-operations"
+import { getStores, updateStore, deleteStore } from "@/lib/database-operations"
 import { StoreForm } from "@/components/store-form"
 import type { Store } from "@/types/database"
 
@@ -12,6 +12,8 @@ export function StoresView() {
   const [loading, setLoading] = useState(true)
   const [edit, setEdit] = useState<Store | null>(null)
   const [saving, setSaving] = useState(false)
+  const [confirmId, setConfirmId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const load = async () => {
     setLoading(true)
@@ -35,6 +37,19 @@ export function StoresView() {
     }
   }
 
+  const handleDelete = async (id: string) => {
+    try {
+      setDeleting(true)
+      await deleteStore(id)
+      await load()
+      setConfirmId(null)
+    } catch (e) {
+      alert("削除に失敗しました: " + (e instanceof Error ? e.message : "不明なエラー"))
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const cell = (v: string | number | null | undefined) =>
     v == null || v === "" ? <span className="text-gray-300">—</span> : v
 
@@ -49,7 +64,7 @@ export function StoresView() {
     "世帯年収",
     "広さ(坪)",
     "1km人口",
-    "編集",
+    "操作",
   ]
 
   return (
@@ -95,10 +110,43 @@ export function StoresView() {
                     {s.pop_1km != null ? s.pop_1km.toLocaleString() : <span className="text-gray-300">—</span>}
                   </td>
                   <td className="px-3 py-2 whitespace-nowrap">
-                    <Button size="sm" variant="outline" onClick={() => setEdit(s)}>
-                      <Pencil className="w-3.5 h-3.5 mr-1" />
-                      編集
-                    </Button>
+                    {confirmId === s.id ? (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-gray-600">削除しますか？</span>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          disabled={deleting}
+                          onClick={() => handleDelete(s.id)}
+                        >
+                          {deleting ? "削除中…" : "削除する"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={deleting}
+                          onClick={() => setConfirmId(null)}
+                        >
+                          キャンセル
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5">
+                        <Button size="sm" variant="outline" onClick={() => setEdit(s)}>
+                          <Pencil className="w-3.5 h-3.5 mr-1" />
+                          編集
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-red-600 hover:bg-red-50 hover:text-red-700"
+                          onClick={() => setConfirmId(s.id)}
+                        >
+                          <Trash2 className="w-3.5 h-3.5 mr-1" />
+                          削除
+                        </Button>
+                      </div>
+                    )}
                   </td>
                 </tr>
               ))}

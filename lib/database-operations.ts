@@ -144,6 +144,12 @@ export async function updateStore(id: string, updates: Partial<Store>): Promise<
   if (error) throw error
 }
 
+// 店舗を1件削除（店舗一覧表の削除ボタンから使用）
+export async function deleteStore(id: string): Promise<void> {
+  const { error } = await supabase.from("stores").delete().eq("id", id)
+  if (error) throw error
+}
+
 async function createTrelloListForCard(projectName: string, cardData: any) {
   try {
     console.log("[v0] Creating Trello list for:", projectName)

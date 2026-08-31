@@ -49,13 +49,27 @@ const YOTO_COLORS: Record<string, string> = {
 }
 const YOTO_FALLBACK = "#cccccc"
 
-// 到達圏（アイソクロン）の色分け。時間が短い＝濃い青、長い＝薄い青。
-const ISO_BANDS: { min: number; color: string }[] = [
-  { min: 5, color: "#1b4da0" },
-  { min: 10, color: "#4b8fe3" },
-  { min: 15, color: "#a7c8f2" },
+// 到達圏（アイソクロン）の色分け。地点ごとに色相を変え、各地点内は
+// 時間が短い＝濃い / 長い＝淡い の3段階。地点が増えたら順に色を割り当てる。
+type IsoBand = { min: number; color: string }
+const ISO_PALETTES: { name: string; base: string; bands: IsoBand[] }[] = [
+  { name: "青", base: "#1b4da0", bands: [{ min: 5, color: "#1b4da0" }, { min: 10, color: "#4b8fe3" }, { min: 15, color: "#a7c8f2" }] },
+  { name: "オレンジ", base: "#c2410c", bands: [{ min: 5, color: "#c2410c" }, { min: 10, color: "#f97316" }, { min: 15, color: "#fdba74" }] },
+  { name: "緑", base: "#15803d", bands: [{ min: 5, color: "#15803d" }, { min: 10, color: "#22c55e" }, { min: 15, color: "#86efac" }] },
+  { name: "紫", base: "#6d28d9", bands: [{ min: 5, color: "#6d28d9" }, { min: 10, color: "#a855f7" }, { min: 15, color: "#d8b4fe" }] },
+  { name: "ピンク", base: "#be185d", bands: [{ min: 5, color: "#be185d" }, { min: 10, color: "#ec4899" }, { min: 15, color: "#f9a8d4" }] },
+  { name: "ティール", base: "#0f766e", bands: [{ min: 5, color: "#0f766e" }, { min: 10, color: "#14b8a6" }, { min: 15, color: "#5eead4" }] },
 ]
-const ISO_MINUTES = ISO_BANDS.map((b) => b.min)
+const ISO_MINUTES = [5, 10, 15]
+const isoPalette = (i: number) => ISO_PALETTES[i % ISO_PALETTES.length]
+
+type IsoPoint = {
+  id: number
+  lat: number
+  lng: number
+  geojson: any
+  status: "loading" | "ready" | "error" | "nokey"
+}
 
 interface MapViewProps {
   cards: (Card & { listTitle?: string })[]
@@ -222,11 +236,10 @@ export function MapView({ cards }: MapViewProps) {
   // 距離測定
   const [measuring, setMeasuring] = useState(false)
   const [measurePts, setMeasurePts] = useState<{ lat: number; lng: number }[]>([])
-  // 到達圏（車でN分）
+  // 到達圏（車でN分）。複数地点に対応し、地点ごとに色を変える。
   const [isoOn, setIsoOn] = useState(false)
-  const [isoOrigin, setIsoOrigin] = useState<{ lat: number; lng: number } | null>(null)
-  const [isoGeojson, setIsoGeojson] = useState<any>(null)
-  const [isoStatus, setIsoStatus] = useState<"idle" | "loading" | "ready" | "error" | "nokey">("idle")
+  const [isoPoints, setIsoPoints] = useState<IsoPoint[]>([])
+  const isoIdRef = useRef(0)
 
   const [editStore, setEditStore] = useState<Store | null>(null)
   const [saving, setSaving] = useState(false)
@@ -250,37 +263,31 @@ export function MapView({ cards }: MapViewProps) {
   const toggleSelect = (it: MapItem) =>
     setSelectedIds((prev) => (prev.includes(it.id) ? prev.filter((x) => x !== it.id) : [...prev, it.id]))
 
-  // 到達圏：起点が決まったらOpenRouteServiceへ問い合わせてポリゴンを取得
-  useEffect(() => {
-    if (!isoOrigin) {
-      setIsoGeojson(null)
-      setIsoStatus("idle")
-      return
-    }
-    let cancelled = false
-    setIsoStatus("loading")
-    setIsoGeojson(null)
-    ;(async () => {
-      try {
-        const res = await fetch("/api/isochrone", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ lat: isoOrigin.lat, lng: isoOrigin.lng, minutes: ISO_MINUTES }),
-        })
-        const j = await res.json().catch(() => null)
-        if (cancelled) return
-        if (j?.error === "NO_KEY") return setIsoStatus("nokey")
-        if (!j || j.error || !j.geojson?.features?.length) return setIsoStatus("error")
-        setIsoGeojson(j.geojson)
-        setIsoStatus("ready")
-      } catch {
-        if (!cancelled) setIsoStatus("error")
+  // 到達圏：地図クリックで地点を追加し、その地点のポリゴンを取得（複数地点対応）
+  const addIsoPoint = async (lat: number, lng: number) => {
+    const id = ++isoIdRef.current
+    setIsoPoints((prev) => [...prev, { id, lat, lng, geojson: null, status: "loading" }])
+    let status: IsoPoint["status"] = "error"
+    let geojson: any = null
+    try {
+      const res = await fetch("/api/isochrone", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lat, lng, minutes: ISO_MINUTES }),
+      })
+      const j = await res.json().catch(() => null)
+      if (j?.error === "NO_KEY") status = "nokey"
+      else if (j && !j.error && j.geojson?.features?.length) {
+        status = "ready"
+        geojson = j.geojson
       }
-    })()
-    return () => {
-      cancelled = true
+    } catch {
+      status = "error"
     }
-  }, [isoOrigin])
+    setIsoPoints((prev) => prev.map((p) => (p.id === id ? { ...p, status, geojson } : p)))
+  }
+  const removeIsoPoint = (id: number) => setIsoPoints((prev) => prev.filter((p) => p.id !== id))
+  const clearIsoPoints = () => setIsoPoints([])
 
   if (!apiKey) {
     return (
@@ -361,12 +368,7 @@ export function MapView({ cards }: MapViewProps) {
               points={measurePts}
               onAdd={(pt) => setMeasurePts((p) => [...p, pt])}
             />
-            <IsochroneLayer
-              enabled={isoOn}
-              origin={isoOrigin}
-              geojson={isoGeojson}
-              onPick={(pt) => setIsoOrigin(pt)}
-            />
+            <IsochroneLayer enabled={isoOn} points={isoPoints} onPick={addIsoPoint} />
           </Map>
         </APIProvider>
 
@@ -464,54 +466,73 @@ export function MapView({ cards }: MapViewProps) {
 
         {/* 到達圏パネル（表示ON時） */}
         {isoOn && (
-          <div className="absolute top-3 left-16 z-10 bg-white/95 rounded-lg shadow-xl border p-3 w-56">
+          <div className="absolute top-3 left-16 z-10 bg-white/95 rounded-lg shadow-xl border p-3 w-60">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-gray-700">到達圏（車）</span>
               <button
                 onClick={() => {
                   setIsoOn(false)
-                  setIsoOrigin(null)
+                  clearIsoPoints()
                 }}
                 className="text-gray-400 hover:text-gray-700"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
-            {isoStatus === "nokey" ? (
+
+            {isoPoints.some((p) => p.status === "nokey") ? (
               <p className="text-[11px] text-rose-500 leading-snug">
                 OPENROUTESERVICE_API_KEY が未設定です。OpenRouteService の無料APIキーを環境変数に設定してください。
               </p>
             ) : (
               <>
-                <div className="space-y-1 mb-2">
-                  {ISO_BANDS.map((b) => (
-                    <div key={b.min} className="flex items-center gap-1.5 text-[11px]">
-                      <span
-                        className="inline-block w-3 h-3 rounded-sm border border-black/10 flex-shrink-0"
-                        style={{ backgroundColor: b.color }}
-                      />
-                      <span className="flex-1 leading-tight">車 {b.min} 分以内</span>
-                    </div>
-                  ))}
+                {/* 時間帯の凡例（濃いほど短時間） */}
+                <div className="flex items-center gap-1 text-[10px] text-gray-500 mb-2">
+                  <span>近い</span>
+                  <span className="inline-block h-2.5 flex-1 rounded-sm" style={{ background: "linear-gradient(90deg,#1b4da0,#4b8fe3,#a7c8f2)" }} />
+                  <span>遠い（15分）</span>
                 </div>
-                <p className="text-[11px] text-gray-500 leading-snug">
-                  {isoStatus === "loading"
-                    ? "到達圏を計算中…"
-                    : isoStatus === "error"
-                      ? "取得に失敗しました。少し時間をおいて、もう一度地点をクリックしてください。"
-                      : isoOrigin
-                        ? "別の地点をクリックすると起点を移動します。"
-                        : "地図上の地点をクリックすると、その場所から車で到達できる範囲を表示します。"}
-                </p>
-                {isoOrigin && (
+
+                {isoPoints.length === 0 ? (
+                  <p className="text-[11px] text-gray-500 leading-snug">
+                    地図上の地点をクリックすると、その場所から車で到達できる範囲を表示します。複数クリックすると地点ごとに色が変わります。
+                  </p>
+                ) : (
+                  <div className="space-y-1 max-h-[40vh] overflow-auto">
+                    {isoPoints.map((p, idx) => {
+                      const pal = isoPalette(idx)
+                      return (
+                        <div key={p.id} className="flex items-center gap-1.5 text-[11px]">
+                          <span
+                            className="inline-block w-3 h-3 rounded-full flex-shrink-0 border border-black/10"
+                            style={{ backgroundColor: pal.base }}
+                          />
+                          <span className="flex-1 leading-tight">
+                            地点 {idx + 1}
+                            {p.status === "loading" && <span className="text-gray-400">（計算中…）</span>}
+                            {p.status === "error" && <span className="text-rose-400">（取得失敗）</span>}
+                          </span>
+                          <button
+                            onClick={() => removeIsoPoint(p.id)}
+                            title="この地点を消す"
+                            className="text-gray-400 hover:text-red-600"
+                          >
+                            <X className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+
+                {isoPoints.length > 0 && (
                   <button
-                    onClick={() => setIsoOrigin(null)}
+                    onClick={clearIsoPoints}
                     className="mt-2 text-xs bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded w-full"
                   >
-                    クリア
+                    すべてクリア
                   </button>
                 )}
-                <div className="text-[10px] text-gray-400 mt-2">出典：OpenRouteService（道路ネットワーク）</div>
               </>
             )}
           </div>
@@ -581,7 +602,6 @@ export function MapView({ cards }: MapViewProps) {
                   <input type="checkbox" checked={showYoto} onChange={(e) => setShowYoto(e.target.checked)} />
                   用途地域を表示
                 </label>
-                <div className="text-[10px] text-gray-400 mt-1">出典：国交省 不動産情報ライブラリ（要APIキー）</div>
                 <label className="flex items-center gap-2 cursor-pointer text-sm mt-2 pt-2 border-t">
                   <input
                     type="checkbox"
@@ -591,7 +611,7 @@ export function MapView({ cards }: MapViewProps) {
                       if (e.target.checked) {
                         setFilterOpen(false)
                         setIsoOn(false)
-                        setIsoOrigin(null)
+                        clearIsoPoints()
                       }
                     }}
                   />
@@ -609,13 +629,12 @@ export function MapView({ cards }: MapViewProps) {
                         setMeasuring(false)
                         setMeasurePts([])
                       } else {
-                        setIsoOrigin(null)
+                        clearIsoPoints()
                       }
                     }}
                   />
                   到達圏（車で5・10・15分）
                 </label>
-                <div className="text-[10px] text-gray-400 mt-1">出典：OpenRouteService（要APIキー）</div>
               </div>
 
               <div className="text-[11px] text-gray-400 border-t pt-2">
@@ -1030,77 +1049,80 @@ function geometryToPaths(geom: any): { lat: number; lng: number }[][] {
 
 function IsochroneLayer({
   enabled,
-  origin,
-  geojson,
+  points,
   onPick,
 }: {
   enabled: boolean
-  origin: { lat: number; lng: number } | null
-  geojson: any
-  onPick: (pt: { lat: number; lng: number }) => void
+  points: IsoPoint[]
+  onPick: (lat: number, lng: number) => void
 }) {
   const map = useMap()
 
-  // 到達圏モード中は地図クリックで起点を指定
+  // 到達圏モード中は地図クリックで地点を追加
   useEffect(() => {
     if (!map || typeof google === "undefined" || !enabled) return
     const l = map.addListener("click", (ev: any) => {
-      if (ev.latLng) onPick({ lat: ev.latLng.lat(), lng: ev.latLng.lng() })
+      if (ev.latLng) onPick(ev.latLng.lat(), ev.latLng.lng())
     })
     return () => google.maps.event.removeListener(l)
   }, [map, enabled, onPick])
 
-  // ポリゴン＋起点マーカーを描画
+  // 全地点のポリゴン＋起点マーカーを描画（地点ごとに色を変える）
   useEffect(() => {
     if (!map || typeof google === "undefined") return
     const shapes: google.maps.Polygon[] = []
-    let marker: google.maps.Marker | null = null
+    const markers: google.maps.Marker[] = []
 
-    const feats: any[] = geojson?.features ? [...geojson.features] : []
-    // 面積が大きい（＝時間が長い）ものから先に描画し、短い時間ほど上に重ねる
-    feats.sort((a, b) => (b?.properties?.value ?? 0) - (a?.properties?.value ?? 0))
-    feats.forEach((f) => {
-      const sec = Number(f?.properties?.value ?? 0)
-      const min = Math.round(sec / 60)
-      const band = ISO_BANDS.find((b) => b.min === min) ?? ISO_BANDS[ISO_BANDS.length - 1]
-      const paths = geometryToPaths(f?.geometry)
-      if (!paths.length) return
-      shapes.push(
-        new google.maps.Polygon({
+    points.forEach((pt, idx) => {
+      const pal = isoPalette(idx)
+      const feats: any[] = pt.geojson?.features ? [...pt.geojson.features] : []
+      // 面積が大きい（＝時間が長い）ものから先に描画し、短い時間ほど上に重ねる
+      feats.sort((a, b) => (b?.properties?.value ?? 0) - (a?.properties?.value ?? 0))
+      feats.forEach((f) => {
+        const sec = Number(f?.properties?.value ?? 0)
+        const min = Math.round(sec / 60)
+        const band = pal.bands.find((b) => b.min === min) ?? pal.bands[pal.bands.length - 1]
+        const paths = geometryToPaths(f?.geometry)
+        if (!paths.length) return
+        shapes.push(
+          new google.maps.Polygon({
+            map,
+            paths,
+            strokeColor: band.color,
+            strokeOpacity: 0.9,
+            strokeWeight: 1.5,
+            fillColor: band.color,
+            fillOpacity: 0.28,
+            clickable: false,
+            zIndex: 100 - min, // 短時間ほど手前
+          }),
+        )
+      })
+
+      // 起点マーカー（その地点の色）
+      markers.push(
+        new google.maps.Marker({
           map,
-          paths,
-          strokeColor: band.color,
-          strokeOpacity: 0.9,
-          strokeWeight: 1.5,
-          fillColor: band.color,
-          fillOpacity: 0.3,
-          clickable: false,
-          zIndex: 100 - min, // 短時間ほど手前
+          position: { lat: pt.lat, lng: pt.lng },
+          zIndex: 1000,
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 6,
+            fillColor: pal.base,
+            fillOpacity: 1,
+            strokeColor: "#fff",
+            strokeWeight: 2,
+          },
+          label: { text: String(idx + 1), color: "#fff", fontSize: "10px", fontWeight: "700" },
         }),
       )
     })
 
-    if (origin) {
-      marker = new google.maps.Marker({
-        map,
-        position: origin,
-        zIndex: 1000,
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 6,
-          fillColor: "#1b4da0",
-          fillOpacity: 1,
-          strokeColor: "#fff",
-          strokeWeight: 2,
-        },
-      })
-    }
-
     return () => {
       shapes.forEach((s) => s.setMap(null))
-      if (marker) marker.setMap(null)
+      markers.forEach((m) => m.setMap(null))
     }
-  }, [map, geojson, origin])
+  }, [map, points])
 
   return null
 }
