@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react"
 import type { BoardData, Card } from "@/types/database"
+import { regionOf } from "@/types/database"
 import { ExternalLink } from 'lucide-react'
 import { updateCard } from "@/lib/database-operations"
 import {
@@ -44,6 +45,7 @@ export function TimelineView({ board }: TimelineViewProps) {
   const [newDate, setNewDate] = useState("")
   const [isUpdating, setIsUpdating] = useState(false)
   const [yomiFilter, setYomiFilter] = useState<string>("all")
+  const [areaFilter, setAreaFilter] = useState<string>("all")
 
   const timelineItems = useMemo(() => {
     const items: TimelineItem[] = []
@@ -140,9 +142,9 @@ export function TimelineView({ board }: TimelineViewProps) {
     })
   }, [board])
 
-  // ヨミ（リスト名）ごとのフィルタ用の一覧と件数を作成
+  // ヨミ（段階＝リスト名）ごとのフィルタ用の一覧と件数を作成
   const yomiOptions = useMemo(() => {
-    const order = ["Aヨミ", "Bヨミ", "Cヨミ", "未確定", "完了"]
+    const order = ["OPEN", "工事中", "設営中", "契約済", "Aヨミ", "Bヨミ", "Cヨミ", "Dヨミ"]
     const counts = new Map<string, number>()
     timelineItems.forEach((item) => {
       counts.set(item.listTitle, (counts.get(item.listTitle) || 0) + 1)
@@ -159,10 +161,44 @@ export function TimelineView({ board }: TimelineViewProps) {
     return present.map((title) => ({ title, count: counts.get(title) || 0 }))
   }, [timelineItems])
 
+  // エリア（地方）ごとのフィルタ用の一覧と件数
+  const areaOptions = useMemo(() => {
+    const order = ["北海道", "東北", "関東", "中部", "近畿", "中国", "四国", "九州", "その他"]
+    const counts = new Map<string, number>()
+    timelineItems.forEach((item) => {
+      const r = regionOf(item.card.prefecture)
+      counts.set(r, (counts.get(r) || 0) + 1)
+    })
+    const present = Array.from(counts.keys())
+    present.sort((a, b) => order.indexOf(a) - order.indexOf(b))
+    return present.map((name) => ({ name, count: counts.get(name) || 0 }))
+  }, [timelineItems])
+
   const filteredItems = useMemo(() => {
-    if (yomiFilter === "all") return timelineItems
-    return timelineItems.filter((item) => item.listTitle === yomiFilter)
-  }, [timelineItems, yomiFilter])
+    return timelineItems.filter(
+      (item) =>
+        (yomiFilter === "all" || item.listTitle === yomiFilter) &&
+        (areaFilter === "all" || regionOf(item.card.prefecture) === areaFilter),
+    )
+  }, [timelineItems, yomiFilter, areaFilter])
+
+  // 指定した年月時点での各段階の店舗数（月ヘッダーのホバーで表示）
+  const monthStats = (m: { year: number; month: number }) => {
+    const mStart = new Date(m.year, m.month, 1)
+    const mEnd = new Date(m.year, m.month + 1, 0, 23, 59, 59)
+    const inter = (s: Date | null, e: Date | null) => !!s && !!e && s <= mEnd && e >= mStart
+    let open = 0,
+      koji = 0,
+      setup = 0,
+      follow = 0
+    filteredItems.forEach((it) => {
+      if (it.openDate && it.openDate <= mEnd) open++
+      if (inter(it.startDate, it.startEndDate)) koji++
+      if (inter(it.setupStartDate, it.setupEndDate)) setup++
+      if (inter(it.openFollowStartDate, it.openFollowEndDate)) follow++
+    })
+    return { open, koji, setup, follow }
+  }
 
   const dateRange = useMemo(() => {
     if (timelineItems.length === 0) return { start: new Date(), end: new Date(), months: [] }
@@ -233,15 +269,21 @@ export function TimelineView({ board }: TimelineViewProps) {
       return "bg-white text-gray-600 border border-gray-300 hover:bg-gray-50"
     }
     switch (title) {
+      case "OPEN":
+        return "bg-green-600 text-white border border-green-600 shadow-sm"
+      case "工事中":
+        return "bg-cyan-600 text-white border border-cyan-600 shadow-sm"
+      case "設営中":
+        return "bg-violet-600 text-white border border-violet-600 shadow-sm"
+      case "契約済":
+        return "bg-amber-600 text-white border border-amber-600 shadow-sm"
       case "Aヨミ":
-        return "bg-green-500 text-white border border-green-500 shadow-sm"
+        return "bg-blue-600 text-white border border-blue-600 shadow-sm"
       case "Bヨミ":
-        return "bg-blue-500 text-white border border-blue-500 shadow-sm"
+        return "bg-sky-500 text-white border border-sky-500 shadow-sm"
       case "Cヨミ":
         return "bg-orange-500 text-white border border-orange-500 shadow-sm"
-      case "完了":
-        return "bg-red-500 text-white border border-red-500 shadow-sm"
-      case "未確定":
+      case "Dヨミ":
         return "bg-gray-500 text-white border border-gray-500 shadow-sm"
       default:
         return "bg-teal-500 text-white border border-teal-500 shadow-sm"
@@ -307,6 +349,36 @@ export function TimelineView({ board }: TimelineViewProps) {
               </button>
             ))}
           </div>
+          {areaOptions.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 mt-2">
+              <span className="text-sm font-bold text-gray-700 mr-1">エリアで絞り込み:</span>
+              <button
+                onClick={() => setAreaFilter("all")}
+                className={`text-sm px-3 py-1.5 rounded-full font-medium transition-colors ${
+                  areaFilter === "all"
+                    ? "bg-[#1b4da0] text-white border border-[#1b4da0] shadow-sm"
+                    : "bg-white text-gray-600 border border-gray-300 hover:bg-gray-50"
+                }`}
+              >
+                全て
+                <span className="ml-1 text-xs opacity-80">({timelineItems.length})</span>
+              </button>
+              {areaOptions.map((opt) => (
+                <button
+                  key={opt.name}
+                  onClick={() => setAreaFilter(opt.name)}
+                  className={`text-sm px-3 py-1.5 rounded-full font-medium transition-colors ${
+                    areaFilter === opt.name
+                      ? "bg-[#1b4da0] text-white border border-[#1b4da0] shadow-sm"
+                      : "bg-white text-gray-600 border border-gray-300 hover:bg-gray-50"
+                  }`}
+                >
+                  {opt.name}エリア
+                  <span className="ml-1 text-xs opacity-80">({opt.count})</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       )}
       <div className="overflow-x-auto bg-white">
@@ -316,15 +388,37 @@ export function TimelineView({ board }: TimelineViewProps) {
               <h3 className="font-bold text-lg text-gray-800 py-3">プロジェクト名</h3>
             </div>
             <div className="flex-1">
-              <div className="flex bg-gradient-to-r from-teal-50 to-cyan-50 rounded-t-lg overflow-hidden border-b-2 border-teal-400">
-                {dateRange.months.map((month, idx) => (
-                  <div
-                    key={idx}
-                    className="flex-1 text-center py-3 border-l border-teal-200 first:border-l-0"
-                  >
-                    <div className="text-sm font-bold text-gray-700">{month.label}</div>
-                  </div>
-                ))}
+              <div className="flex bg-gradient-to-r from-teal-50 to-cyan-50 rounded-t-lg border-b-2 border-teal-400">
+                {dateRange.months.map((month, idx) => {
+                  const st = monthStats(month)
+                  return (
+                    <div
+                      key={idx}
+                      className="flex-1 text-center py-3 border-l border-teal-200 first:border-l-0 relative group cursor-default"
+                    >
+                      <div className="text-sm font-bold text-gray-700">{month.label}</div>
+                      <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 z-30 hidden group-hover:block bg-gray-800 text-white text-[11px] rounded-lg shadow-xl px-3 py-2 whitespace-nowrap text-left">
+                        <div className="font-bold mb-1 border-b border-white/20 pb-1">{month.label} 時点</div>
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-green-300">OPEN</span>
+                          <span className="font-bold">{st.open} 店舗</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-cyan-300">工事中</span>
+                          <span className="font-bold">{st.koji} 店舗</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-blue-300">設営中</span>
+                          <span className="font-bold">{st.setup} 店舗</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-4">
+                          <span className="text-purple-300">OPENフォロー中</span>
+                          <span className="font-bold">{st.follow} 店舗</span>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
               </div>
             </div>
           </div>

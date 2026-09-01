@@ -7,6 +7,55 @@ export const PROJECT_CATEGORIES: ProjectCategory[] = [
   "丸紅-Splash",
 ]
 
+// 段階（ヨミ）＝ボードの列。8段階。並び順もこの順。
+export const STAGES = ["OPEN", "工事中", "設営中", "契約済", "Aヨミ", "Bヨミ", "Cヨミ", "Dヨミ"] as const
+export type Stage = (typeof STAGES)[number]
+
+// 段階ごとの色（地図ピン・フィルタ・タイムライン共通）
+export const STAGE_COLORS: Record<string, string> = {
+  OPEN: "#16a34a",
+  工事中: "#0891b2",
+  設営中: "#7c3aed",
+  契約済: "#d97706",
+  Aヨミ: "#2563eb",
+  Bヨミ: "#0ea5e9",
+  Cヨミ: "#f59e0b",
+  Dヨミ: "#6b7280",
+}
+
+// リスト名/旧ラベルを8段階のいずれかに正規化（完了→OPEN、未確定→Dヨミ 等）
+export function normalizeStage(title?: string | null): Stage {
+  const t = title ?? ""
+  if (t.includes("OPEN") || t.includes("完了") || t.includes("オープン")) return "OPEN"
+  if (t.includes("工事")) return "工事中"
+  if (t.includes("設営")) return "設営中"
+  if (t.includes("契約")) return "契約済"
+  if (t.includes("Aヨミ")) return "Aヨミ"
+  if (t.includes("Bヨミ")) return "Bヨミ"
+  if (t.includes("Cヨミ")) return "Cヨミ"
+  if (t.includes("Dヨミ") || t.includes("未確定")) return "Dヨミ"
+  return "Dヨミ"
+}
+
+// 都道府県 → エリア（地方区分）
+export const REGIONS = ["北海道", "東北", "関東", "中部", "近畿", "中国", "四国", "九州", "その他"] as const
+const PREF_CORE_REGION: Record<string, string> = {
+  青森: "東北", 岩手: "東北", 宮城: "東北", 秋田: "東北", 山形: "東北", 福島: "東北",
+  茨城: "関東", 栃木: "関東", 群馬: "関東", 埼玉: "関東", 千葉: "関東", 東京: "関東", 神奈川: "関東",
+  新潟: "中部", 富山: "中部", 石川: "中部", 福井: "中部", 山梨: "中部", 長野: "中部", 岐阜: "中部", 静岡: "中部", 愛知: "中部",
+  三重: "近畿", 滋賀: "近畿", 京都: "近畿", 大阪: "近畿", 兵庫: "近畿", 奈良: "近畿", 和歌山: "近畿",
+  鳥取: "中国", 島根: "中国", 岡山: "中国", 広島: "中国", 山口: "中国",
+  徳島: "四国", 香川: "四国", 愛媛: "四国", 高知: "四国",
+  福岡: "九州", 佐賀: "九州", 長崎: "九州", 熊本: "九州", 大分: "九州", 宮崎: "九州", 鹿児島: "九州", 沖縄: "九州",
+}
+export function regionOf(pref?: string | null): string {
+  if (!pref) return "その他"
+  const p = pref.trim()
+  if (p.includes("北海道")) return "北海道"
+  const core = p.replace(/[都道府県]$/, "")
+  return PREF_CORE_REGION[core] ?? "その他"
+}
+
 // カテゴリごとのピン/バッジ色（Google Maps・UI共通）
 export const CATEGORY_COLORS: Record<ProjectCategory, string> = {
   スプラッシュンゴー: "#2563eb", // blue

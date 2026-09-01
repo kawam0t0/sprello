@@ -34,13 +34,17 @@ import { CATEGORY_COLORS, PROJECT_CATEGORIES, normalizeCategory } from "@/types/
 import { resolveLatLngFromUrl } from "@/lib/maps-url"
 import type { Card as CardType, ProjectCategory } from "@/types/database"
 
-// ヨミの並び順（Aヨミ→Bヨミ→Cヨミ→未確定→完了→その他）
+// 段階（ヨミ）の並び順：OPEN→工事中→設営中→契約済→Aヨミ→Bヨミ→Cヨミ→Dヨミ
 function yomiRank(title: string): number {
-  if (title.includes("Aヨミ")) return 1
-  if (title.includes("Bヨミ")) return 2
-  if (title.includes("Cヨミ")) return 3
-  if (title.includes("未確定")) return 4
-  if (title.includes("完了")) return 5
+  const t = title || ""
+  if (t.includes("OPEN") || t.includes("完了")) return 1
+  if (t.includes("工事")) return 2
+  if (t.includes("設営")) return 3
+  if (t.includes("契約")) return 4
+  if (t.includes("Aヨミ")) return 5
+  if (t.includes("Bヨミ")) return 6
+  if (t.includes("Cヨミ")) return 7
+  if (t.includes("Dヨミ") || t.includes("未確定")) return 8
   return 9
 }
 
@@ -60,9 +64,6 @@ export default function Home() {
   const [fetchingSpec, setFetchingSpec] = useState(false)
   const [fetchingTraffic, setFetchingTraffic] = useState(false)
 
-  const [statusOptions, setStatusOptions] = useState(["見積待ち", "融資待ち", "補助金待ち", "社内稟議待ち"])
-  const [newStatusOption, setNewStatusOption] = useState("")
-  const [showAddStatus, setShowAddStatus] = useState(false)
   const [selectedCard, setSelectedCard] = useState<CardType | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [newCardTitle, setNewCardTitle] = useState("")
@@ -150,14 +151,6 @@ export default function Home() {
     }
   }
 
-  const addStatusOption = () => {
-    if (!newStatusOption.trim() || statusOptions.includes(newStatusOption)) return
-
-    setStatusOptions([...statusOptions, newStatusOption])
-    setNewStatusOption("")
-    setShowAddStatus(false)
-  }
-
   const handleUpdateCard = async (updatedCard: CardType) => {
     try {
       // ピン座標：候補地URL（GoogleマップURL）を最優先。無ければ住所からジオコーディング。
@@ -226,9 +219,9 @@ export default function Home() {
         lat,
         lng,
       })
-      // 完了リストのプロジェクトを編集した場合は自社店舗(stores)も同期
+      // OPEN段階のプロジェクトを編集した場合は自社店舗(stores)も同期
       const listTitle = board.lists.find((l) => l.id === updatedCard.list_id)?.title ?? ""
-      if (listTitle.includes("完了")) {
+      if (listTitle.includes("OPEN")) {
         await upsertStoreFromCard({ ...updatedCard, lat, lng, pop_1km, pop_2km, pop_5km })
       }
       refetch() // データを再取得
@@ -329,15 +322,21 @@ export default function Home() {
 
   const getListColor = (listTitle: string) => {
     switch (listTitle) {
-      case "完了":
-        return "bg-red-100"
-      case "Aヨミ":
+      case "OPEN":
         return "bg-green-100"
-      case "Bヨミ":
+      case "工事中":
+        return "bg-cyan-100"
+      case "設営中":
+        return "bg-violet-100"
+      case "契約済":
+        return "bg-amber-100"
+      case "Aヨミ":
         return "bg-blue-100"
+      case "Bヨミ":
+        return "bg-sky-100"
       case "Cヨミ":
         return "bg-orange-100"
-      case "未確定":
+      case "Dヨミ":
         return "bg-gray-100"
       default:
         return "bg-gray-100"
@@ -528,9 +527,9 @@ export default function Home() {
                       await moveCard(selectedCard.id, val, count)
                       const updated = { ...selectedCard, list_id: val }
                       setSelectedCard(updated)
-                      // 「完了」に移したら自社店舗(stores)へ登録＝店舗一覧＆地図ピンに反映
+                      // 「OPEN」に移したら自社店舗(stores)へ登録＝店舗一覧＆地図ピンに反映
                       const targetTitle = board.lists.find((l) => l.id === val)?.title ?? ""
-                      if (targetTitle.includes("完了")) {
+                      if (targetTitle.includes("OPEN")) {
                         await upsertStoreFromCard(updated)
                       }
                       refetch()
@@ -855,64 +854,6 @@ export default function Home() {
                     />
                   </div>
                 </div>
-              </div>
-
-              {/* Status */}
-              <div>
-                <Label htmlFor="status">現在のステータス</Label>
-                <div className="flex gap-2 mt-1">
-                  <Select
-                    value={selectedCard.status}
-                    onValueChange={(value) => setSelectedCard({ ...selectedCard, status: value })}
-                  >
-                    <SelectTrigger className="flex-1">
-                      <SelectValue placeholder="ステータスを選択" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {statusOptions.map((option) => (
-                        <SelectItem key={option} value={option}>
-                          {option}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Button variant="outline" size="sm" onClick={() => setShowAddStatus(true)}>
-                    <Plus className="w-4 h-4" />
-                  </Button>
-                </div>
-
-                {/* Add Status Option */}
-                {showAddStatus && (
-                  <div className="flex gap-2 mt-2">
-                    <Input
-                      placeholder="新しいステータスを入力..."
-                      value={newStatusOption}
-                      onChange={(e) => setNewStatusOption(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          addStatusOption()
-                        } else if (e.key === "Escape") {
-                          setShowAddStatus(false)
-                          setNewStatusOption("")
-                        }
-                      }}
-                      autoFocus
-                    />
-                    <Button size="sm" onClick={addStatusOption}>
-                      追加
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setShowAddStatus(false)
-                        setNewStatusOption("")
-                      }}
-                    >
-                      <X className="w-4 h-4" />
-                    </Button>
-                  </div>
-                )}
               </div>
 
               {/* Memo */}

@@ -55,7 +55,6 @@ const EMPTY: ProjectFormValues = {
 }
 
 const RANK_OPTIONS = ["S", "A", "A-", "B", "B-", "C", "D"]
-const STATUS_OPTIONS = ["検討中", "計画中", "オープン", "閉店", "見送り"]
 const LOCATION_TYPES = ["ロードサイド", "駅前", "住宅街", "商業施設内", "その他"]
 
 // モジュールスコープのテキスト入力（インライン定義だと入力ごとにフォーカスが外れるため外出し）
@@ -147,14 +146,6 @@ export function ProjectForm({ open, onOpenChange, onSubmit, initial, submitting 
                   </SelectContent>
                 </Select>
               </div>
-              <TextField label="地区" value={v.district ?? ""} onChange={(s) => set({ district: s })} />
-              <TextField
-                label="物件番号"
-                value={v.property_no ?? ""}
-                onChange={(s) => set({ property_no: s })}
-                placeholder="S006"
-              />
-              <TextField label="ブランド名" value={v.brand ?? ""} onChange={(s) => set({ brand: s })} />
               <TextField
                 label="店舗名"
                 value={v.store_name ?? ""}
@@ -191,21 +182,6 @@ export function ProjectForm({ open, onOpenChange, onSubmit, initial, submitting 
                 onChange={(s) => set({ prefecture: s })}
                 placeholder="群馬県"
               />
-              <div>
-                <Label className="text-xs text-gray-600">ステータス</Label>
-                <Select value={v.status ?? ""} onValueChange={(val) => set({ status: val })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="選択" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {STATUS_OPTIONS.map((t) => (
-                      <SelectItem key={t} value={t}>
-                        {t}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
             </div>
             <TextField
               label="候補地URL（GoogleマップURL・住所未確定でもピンを立てられます／最優先）"

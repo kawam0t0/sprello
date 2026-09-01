@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { X, Pencil, Menu } from "lucide-react"
 import { APIProvider, Map, useMap } from "@vis.gl/react-google-maps"
-import { CATEGORY_COLORS, PROJECT_CATEGORIES, normalizeCategory } from "@/types/database"
+import { CATEGORY_COLORS, PROJECT_CATEGORIES, STAGES, STAGE_COLORS, normalizeCategory, normalizeStage } from "@/types/database"
 import type { Card, MapItem, ProjectCategory, Store } from "@/types/database"
 import { BRAND_LOGOS } from "@/lib/brand-logos"
 import { getStores, updateStore, geocodeAddress, fetchTraffic } from "@/lib/database-operations"
+import { resolveLatLngFromUrl } from "@/lib/maps-url"
 import { StoreForm } from "@/components/store-form"
 
 const DEFAULT_CENTER = { lat: 36.3912, lng: 139.0608 }
@@ -75,24 +76,10 @@ interface MapViewProps {
   cards: (Card & { listTitle?: string })[]
 }
 
-// ステージ（OPEN/Aヨミ/Bヨミ/Cヨミ/未確定）の色分け
-const STAGE_COLORS: Record<string, string> = {
-  OPEN: "#16a34a",
-  Aヨミ: "#2563eb",
-  Bヨミ: "#d97706",
-  Cヨミ: "#ea580c",
-  未確定: "#6b7280",
-  その他: "#6b7280",
-}
+// 段階（OPEN/工事中/設営中/契約済/Aヨミ/Bヨミ/Cヨミ/Dヨミ）。自社店舗は常にOPEN扱い。
 function stageOf(item: MapItem): { label: string; color: string } {
-  if (item.kind === "store") return { label: "OPEN", color: STAGE_COLORS.OPEN }
-  const t = item.stage || ""
-  if (t.includes("完了")) return { label: "OPEN", color: STAGE_COLORS.OPEN }
-  if (t.includes("Aヨミ")) return { label: "Aヨミ", color: STAGE_COLORS.Aヨミ }
-  if (t.includes("Bヨミ")) return { label: "Bヨミ", color: STAGE_COLORS.Bヨミ }
-  if (t.includes("Cヨミ")) return { label: "Cヨミ", color: STAGE_COLORS.Cヨミ }
-  if (t.includes("未確定")) return { label: "未確定", color: STAGE_COLORS.未確定 }
-  return { label: t || "—", color: STAGE_COLORS.その他 }
+  const label = item.kind === "store" ? "OPEN" : normalizeStage(item.stage)
+  return { label, color: STAGE_COLORS[label] ?? "#6b7280" }
 }
 
 function storeToItem(s: Store): MapItem | null {
@@ -225,11 +212,21 @@ export function MapView({ cards }: MapViewProps) {
     "D-Splash": true,
     "丸紅-Splash": true,
   })
-  const [activeRadii, setActiveRadii] = useState<Record<number, boolean>>({ 1: false, 2: true, 5: false })
+  const [activeRadii, setActiveRadii] = useState<Record<number, boolean>>({ 1: false, 2: false, 5: false })
   const [circleAll, setCircleAll] = useState(false)
   const [selectedIds, setSelectedIds] = useState<string[]>([])
   const [filterOpen, setFilterOpen] = useState(false)
   const [showYoto, setShowYoto] = useState(false)
+  // 段階（ヨミ）で絞り込み。既定は全部表示。
+  const [visibleStages, setVisibleStages] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(STAGES.map((s) => [s, true])),
+  )
+  // 商圏2km（全店舗にデフォルト表示。2km圏が重なる＝薄い赤、重ならない＝薄い青）
+  const [showTradeArea, setShowTradeArea] = useState(true)
+  // 住所／GoogleマップURL 検索
+  const [searchInput, setSearchInput] = useState("")
+  const [searching, setSearching] = useState(false)
+  const [searchTarget, setSearchTarget] = useState<{ lat: number; lng: number; label: string } | null>(null)
   const [yotoLegend, setYotoLegend] = useState<{ counts: Record<string, number>; needZoom: boolean; noKey: boolean }>(
     { counts: {}, needZoom: false, noKey: false },
   )
@@ -246,13 +243,20 @@ export function MapView({ cards }: MapViewProps) {
 
   const allItems = useMemo(() => {
     const s = stores.map(storeToItem).filter(Boolean) as MapItem[]
-    const p = cards.map(cardToItem).filter(Boolean) as MapItem[]
+    // OPEN段階のプロジェクトは自社店舗(stores)へ同期済み（store_code=PJ-<cardId>）。
+    // 二重ピンを避けるため、対応する店舗があるOPENプロジェクトは地図から除外。
+    const storeCodes = new Set(stores.map((x) => x.store_code).filter(Boolean) as string[])
+    const p = (cards.map(cardToItem).filter(Boolean) as MapItem[]).filter((it) => {
+      if (stageOf(it).label !== "OPEN") return true
+      const cardId = it.id.replace("project-", "")
+      return !storeCodes.has(`PJ-${cardId}`)
+    })
     return [...s, ...p]
   }, [stores, cards])
 
   const visibleItems = useMemo(
-    () => allItems.filter((it) => visibleCats[it.category]),
-    [allItems, visibleCats],
+    () => allItems.filter((it) => visibleCats[it.category] && visibleStages[stageOf(it).label]),
+    [allItems, visibleCats, visibleStages],
   )
 
   // 選択はIDで保持し、最新データから列を作る（比較用）
@@ -288,6 +292,30 @@ export function MapView({ cards }: MapViewProps) {
   }
   const removeIsoPoint = (id: number) => setIsoPoints((prev) => prev.filter((p) => p.id !== id))
   const clearIsoPoints = () => setIsoPoints([])
+
+  // 住所／GoogleマップURL 検索 → ピンを立てて地図を移動
+  const runSearch = async () => {
+    const q = searchInput.trim()
+    if (!q) return
+    setSearching(true)
+    try {
+      let pt: { lat: number; lng: number } | null = null
+      if (/https?:\/\//i.test(q)) {
+        pt = await resolveLatLngFromUrl(q)
+        if (!pt) {
+          const g = await geocodeAddress(q)
+          if (g.lat != null && g.lng != null) pt = { lat: g.lat, lng: g.lng }
+        }
+      } else {
+        const g = await geocodeAddress(q)
+        if (g.lat != null && g.lng != null) pt = { lat: g.lat, lng: g.lng }
+      }
+      if (pt) setSearchTarget({ ...pt, label: q })
+      else alert("場所を特定できませんでした。住所またはGoogleマップのURLをご確認ください。")
+    } finally {
+      setSearching(false)
+    }
+  }
 
   if (!apiKey) {
     return (
@@ -354,6 +382,7 @@ export function MapView({ cards }: MapViewProps) {
             disableDefaultUI={false}
             style={{ width: "100%", height: "100%" }}
           >
+            <TradeAreaLayer items={visibleItems} enabled={showTradeArea} />
             <MapOverlays
               items={visibleItems}
               enabledRadii={enabledRadii}
@@ -369,8 +398,58 @@ export function MapView({ cards }: MapViewProps) {
               onAdd={(pt) => setMeasurePts((p) => [...p, pt])}
             />
             <IsochroneLayer enabled={isoOn} points={isoPoints} onPick={addIsoPoint} />
+            <SearchLayer target={searchTarget} />
           </Map>
         </APIProvider>
+
+        {/* 住所・GoogleマップURL 検索（測定中は隠す） */}
+        {!measuring && (
+          <div className="absolute top-3 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1 bg-white/95 rounded-lg shadow-xl border px-2 py-1.5 w-[min(420px,78vw)]">
+            <input
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") runSearch()
+              }}
+              placeholder="住所 または GoogleマップのURL を入力"
+              className="flex-1 text-sm px-2 py-1 outline-none bg-transparent"
+            />
+            <button
+              onClick={runSearch}
+              disabled={searching}
+              className="text-xs bg-[#1b4da0] hover:bg-[#163f85] text-white px-3 py-1.5 rounded whitespace-nowrap disabled:opacity-60"
+            >
+              {searching ? "検索中…" : "検索"}
+            </button>
+            {searchTarget && (
+              <button
+                onClick={() => {
+                  setSearchTarget(null)
+                  setSearchInput("")
+                }}
+                title="検索ピンを消す"
+                className="text-gray-400 hover:text-gray-700"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* 商圏2kmの凡例（表示ON時） */}
+        {showTradeArea && (
+          <div className="absolute bottom-3 right-3 z-10 bg-white/95 rounded-lg shadow-xl border px-3 py-2">
+            <div className="text-[11px] font-bold text-gray-700 mb-1">商圏2km</div>
+            <div className="flex items-center gap-1.5 text-[11px]">
+              <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: "#ef4444", opacity: 0.35 }} />
+              <span>重複あり（NG）</span>
+            </div>
+            <div className="flex items-center gap-1.5 text-[11px]">
+              <span className="inline-block w-3 h-3 rounded-sm" style={{ backgroundColor: "#3b82f6", opacity: 0.35 }} />
+              <span>重複なし</span>
+            </div>
+          </div>
+        )}
 
         {/* 用途地域の凡例（表示ON時のみ） */}
         {showYoto && (
@@ -573,7 +652,48 @@ export function MapView({ cards }: MapViewProps) {
                 </div>
               </div>
 
-              <div>
+              <div className="border-t pt-2">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-gray-500">段階で絞り込み</span>
+                  <div className="flex gap-1">
+                    <button
+                      onClick={() => setVisibleStages(Object.fromEntries(STAGES.map((s) => [s, true])))}
+                      className="text-[10px] text-[#1b4da0] hover:underline"
+                    >
+                      全表示
+                    </button>
+                    <span className="text-gray-300">/</span>
+                    <button
+                      onClick={() => setVisibleStages(Object.fromEntries(STAGES.map((s) => [s, false])))}
+                      className="text-[10px] text-gray-500 hover:underline"
+                    >
+                      全解除
+                    </button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-x-2 gap-y-1">
+                  {STAGES.map((st) => {
+                    const count = allItems.filter((it) => stageOf(it).label === st).length
+                    return (
+                      <label key={st} className="flex items-center gap-1.5 cursor-pointer text-xs">
+                        <input
+                          type="checkbox"
+                          checked={visibleStages[st]}
+                          onChange={(e) => setVisibleStages((p) => ({ ...p, [st]: e.target.checked }))}
+                        />
+                        <span
+                          className="inline-block w-2.5 h-2.5 rounded-full flex-shrink-0"
+                          style={{ backgroundColor: STAGE_COLORS[st] }}
+                        />
+                        <span className="flex-1 leading-tight">{st}</span>
+                        <span className="text-gray-400">{count}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              </div>
+
+              <div className="border-t pt-2">
                 <div className="text-xs font-semibold text-gray-500 mb-2">同心円（商圏）</div>
                 <div className="flex gap-2 mb-2">
                   {RADII.map((r) => (
@@ -599,6 +719,14 @@ export function MapView({ cards }: MapViewProps) {
               <div className="border-t pt-2">
                 <div className="text-xs font-semibold text-gray-500 mb-2">地図レイヤ</div>
                 <label className="flex items-center gap-2 cursor-pointer text-sm">
+                  <input
+                    type="checkbox"
+                    checked={showTradeArea}
+                    onChange={(e) => setShowTradeArea(e.target.checked)}
+                  />
+                  商圏2km（重複＝薄い赤／単独＝薄い青）
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm mt-2">
                   <input type="checkbox" checked={showYoto} onChange={(e) => setShowYoto(e.target.checked)} />
                   用途地域を表示
                 </label>
@@ -1124,6 +1252,72 @@ function IsochroneLayer({
     }
   }, [map, points])
 
+  return null
+}
+
+// ---- 商圏2kmオーバーレイ（2km圏が重なる＝薄い赤／重ならない＝薄い青） ----
+function TradeAreaLayer({ items, enabled }: { items: MapItem[]; enabled: boolean }) {
+  const map = useMap()
+  useEffect(() => {
+    if (!map || typeof google === "undefined" || !enabled) return
+    const R = 2000 // 2km
+    // 2つの円が重なる ⇔ 中心間距離 < 2R
+    const overlap = items.map((it, i) =>
+      items.some(
+        (o, j) => j !== i && haversineM({ lat: it.lat, lng: it.lng }, { lat: o.lat, lng: o.lng }) < 2 * R,
+      ),
+    )
+    const circles = items.map((it, i) => {
+      const ng = overlap[i]
+      return new google.maps.Circle({
+        map,
+        center: { lat: it.lat, lng: it.lng },
+        radius: R,
+        clickable: false,
+        strokeColor: ng ? "#dc2626" : "#2563eb",
+        strokeOpacity: 0.55,
+        strokeWeight: 1,
+        fillColor: ng ? "#ef4444" : "#3b82f6",
+        fillOpacity: 0.1,
+        zIndex: 1,
+      })
+    })
+    return () => circles.forEach((c) => c.setMap(null))
+  }, [map, items, enabled])
+  return null
+}
+
+// ---- 住所／GoogleマップURL 検索のピン ----
+function SearchLayer({ target }: { target: { lat: number; lng: number; label: string } | null }) {
+  const map = useMap()
+  useEffect(() => {
+    if (!map || typeof google === "undefined" || !target) return
+    map.panTo({ lat: target.lat, lng: target.lng })
+    map.setZoom(15)
+    const marker = new google.maps.Marker({
+      map,
+      position: { lat: target.lat, lng: target.lng },
+      zIndex: 2000,
+      icon: {
+        path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
+        scale: 6,
+        fillColor: "#dc2626",
+        fillOpacity: 1,
+        strokeColor: "#fff",
+        strokeWeight: 2,
+      },
+    })
+    const info = new google.maps.InfoWindow({
+      content: `<div style="font-size:12px;max-width:220px">検索地点<br><span style="color:#666">${escapeXml(
+        target.label,
+      )}</span></div>`,
+    })
+    info.open({ map, anchor: marker })
+    return () => {
+      info.close()
+      marker.setMap(null)
+    }
+  }, [map, target])
   return null
 }
 
