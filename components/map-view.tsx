@@ -398,7 +398,7 @@ export function MapView({ cards }: MapViewProps) {
               onAdd={(pt) => setMeasurePts((p) => [...p, pt])}
             />
             <IsochroneLayer enabled={isoOn} points={isoPoints} onPick={addIsoPoint} />
-            <SearchLayer target={searchTarget} />
+            <SearchLayer target={searchTarget} others={visibleItems} />
           </Map>
         </APIProvider>
 
@@ -1287,13 +1287,41 @@ function TradeAreaLayer({ items, enabled }: { items: MapItem[]; enabled: boolean
   return null
 }
 
-// ---- 住所／GoogleマップURL 検索のピン ----
-function SearchLayer({ target }: { target: { lat: number; lng: number; label: string } | null }) {
+// ---- 住所／GoogleマップURL 検索のピン（2km商圏つき・近くに店があると赤／なければ青） ----
+function SearchLayer({
+  target,
+  others,
+}: {
+  target: { lat: number; lng: number; label: string } | null
+  others: MapItem[]
+}) {
   const map = useMap()
   useEffect(() => {
     if (!map || typeof google === "undefined" || !target) return
     map.panTo({ lat: target.lat, lng: target.lng })
-    map.setZoom(15)
+    map.setZoom(14)
+
+    // 検索地点の2km圏が既存の店舗/候補地の2km圏と重なる＝赤（近くに店あり）／重ならない＝青
+    const R = 2000
+    const nearest = others.reduce((min, o) => {
+      const d = haversineM({ lat: target.lat, lng: target.lng }, { lat: o.lat, lng: o.lng })
+      return d < min ? d : min
+    }, Infinity)
+    const ng = nearest < 2 * R
+    const color = ng ? "#dc2626" : "#2563eb"
+
+    const circle = new google.maps.Circle({
+      map,
+      center: { lat: target.lat, lng: target.lng },
+      radius: R,
+      clickable: false,
+      strokeColor: color,
+      strokeOpacity: 0.9,
+      strokeWeight: 2,
+      fillColor: ng ? "#ef4444" : "#3b82f6",
+      fillOpacity: 0.12,
+      zIndex: 3,
+    })
     const marker = new google.maps.Marker({
       map,
       position: { lat: target.lat, lng: target.lng },
@@ -1301,23 +1329,34 @@ function SearchLayer({ target }: { target: { lat: number; lng: number; label: st
       icon: {
         path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
         scale: 6,
-        fillColor: "#dc2626",
+        fillColor: color,
         fillOpacity: 1,
         strokeColor: "#fff",
         strokeWeight: 2,
       },
     })
+    const verdict = ng
+      ? `<span style="color:#dc2626;font-weight:700">近くに店舗あり（2km圏が重複）</span>`
+      : `<span style="color:#2563eb;font-weight:700">近くに店舗なし（2km圏の重複なし）</span>`
+    const distTxt = Number.isFinite(nearest)
+      ? `最寄り店舗まで 約${(nearest / 1000).toFixed(1)}km`
+      : "周辺に登録店舗なし"
     const info = new google.maps.InfoWindow({
-      content: `<div style="font-size:12px;max-width:220px">検索地点<br><span style="color:#666">${escapeXml(
-        target.label,
-      )}</span></div>`,
+      content:
+        `<div style="font-size:12px;max-width:230px;line-height:1.6">` +
+        `<div style="font-weight:700">検索地点</div>` +
+        `<div style="color:#666;margin-bottom:4px">${escapeXml(target.label)}</div>` +
+        `<div>${verdict}</div>` +
+        `<div style="color:#888;font-size:11px">${distTxt}</div>` +
+        `</div>`,
     })
     info.open({ map, anchor: marker })
     return () => {
       info.close()
       marker.setMap(null)
+      circle.setMap(null)
     }
-  }, [map, target])
+  }, [map, target, others])
   return null
 }
 

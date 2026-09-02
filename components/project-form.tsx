@@ -184,16 +184,10 @@ export function ProjectForm({ open, onOpenChange, onSubmit, initial, submitting 
               />
             </div>
             <TextField
-              label="候補地URL（GoogleマップURL・住所未確定でもピンを立てられます／最優先）"
+              label="候補地URL（GoogleマップURL）※この場所が店舗の位置になります"
               value={v.candidate_url ?? ""}
               onChange={(s) => set({ candidate_url: s })}
               placeholder="https://maps.app.goo.gl/... または https://www.google.com/maps/...@36.37,139.08..."
-            />
-            <TextField
-              label="住所（任意・候補地URLが無い場合のピン位置に使用）"
-              value={v.address ?? ""}
-              onChange={(s) => set({ address: s })}
-              placeholder="群馬県太田市新田野井町3-1"
             />
           </section>
 

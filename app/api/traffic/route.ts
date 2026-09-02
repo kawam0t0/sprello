@@ -103,7 +103,15 @@ export async function GET(req: NextRequest) {
   const results = await Promise.all(jobs)
 
   let best:
-    | { d: number; traffic: number; layer: string; census: string; speed: number | null; lanes: number | null }
+    | {
+        d: number
+        traffic: number
+        layer: string
+        census: string
+        speed: number | null
+        lanes: number | null
+        props: Record<string, any>
+      }
     | null = null
   for (const { layer, features } of results) {
     if (!features) continue
@@ -119,9 +127,20 @@ export async function GET(req: NextRequest) {
           census: String(f?.properties?.census ?? ""),
           speed: Number.isFinite(Number(f?.properties?.speed_DT)) ? Number(f.properties.speed_DT) : null,
           lanes: Number.isFinite(Number(f?.properties?.Linenum)) ? Number(f.properties.Linenum) : null,
+          props: f?.properties ?? {},
         }
       }
     }
+  }
+
+  // デバッグ: 最寄り区間の全プロパティを返す（フィールド名確認用。?debug=1）
+  if (searchParams.get("debug") === "1") {
+    return NextResponse.json({
+      found: !!best,
+      distance_m: best ? Math.round(best.d) : null,
+      layer: best?.layer ?? null,
+      properties: best?.props ?? null,
+    })
   }
 
   // 最寄り区間が遠すぎる場合は代表性が低いので「見つからない」とする

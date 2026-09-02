@@ -699,7 +699,7 @@ export default function Home() {
                         disabled={fetchingTraffic}
                         onClick={async () => {
                           if (selectedCard.lat == null || selectedCard.lng == null) {
-                            alert("先に候補地URLか住所を入れて保存し、ピンを立ててから取得してください")
+                            alert("先に候補地URLを入れて保存し、ピンを立ててから取得してください")
                             return
                           }
                           setFetchingTraffic(true)
@@ -764,22 +764,6 @@ export default function Home() {
                     />
                     <span className="text-xs text-gray-600">視認性</span>
                   </div>
-                  <div className="col-span-2 md:col-span-4">
-                    <Label className="text-xs text-gray-600">住所（保存時に地図ピンを更新）</Label>
-                    <Input
-                      value={selectedCard.address ?? ""}
-                      placeholder="群馬県太田市新田野井町3-1"
-                      onChange={(e) =>
-                        setSelectedCard({
-                          ...selectedCard,
-                          address: e.target.value,
-                          // 住所を変えたらジオコーディングし直すため緯度経度をクリア
-                          lat: null,
-                          lng: null,
-                        })
-                      }
-                    />
-                  </div>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-gray-500">商圏人口（国勢2020・保存時に自動入力）</span>
@@ -789,7 +773,7 @@ export default function Home() {
                     disabled={fetchingCardPop}
                     onClick={async () => {
                       if (selectedCard.lat == null || selectedCard.lng == null) {
-                        alert("先に候補地URLか住所を入れて保存し、ピンを立ててから取得してください")
+                        alert("先に候補地URLを入れて保存し、ピンを立ててから取得してください")
                         return
                       }
                       setFetchingCardPop(true)
@@ -937,10 +921,10 @@ export default function Home() {
 
               {/* Candidate URL（1本のみ・地図ピンの座標元） */}
               <div className="space-y-2">
-                <h3 className="text-lg font-semibold text-gray-800">候補地URL</h3>
+                <h3 className="text-lg font-semibold text-gray-800">候補地URL（店舗の位置）</h3>
                 <div>
                   <Label htmlFor="candidateUrl" className="text-xs text-gray-600">
-                    GoogleマップのURL（住所未確定でもピンを立てられます。保存時に座標を取得）
+                    GoogleマップのURL。この場所が地図ピン＝店舗の位置になります（保存時に座標を取得）
                   </Label>
                   <Input
                     id="candidateUrl"
