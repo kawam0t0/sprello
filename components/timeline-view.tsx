@@ -321,7 +321,7 @@ export function TimelineView({ board }: TimelineViewProps) {
       months.push({
         year: current.getFullYear(),
         month: current.getMonth(),
-        label: `${current.getFullYear()}年${current.getMonth() + 1}月`,
+        label: `${current.getFullYear()}-${String(current.getMonth() + 1).padStart(2, "0")}`,
       })
       current.setMonth(current.getMonth() + 1)
     }
