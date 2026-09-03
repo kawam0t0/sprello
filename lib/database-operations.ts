@@ -122,6 +122,7 @@ export async function upsertStoreFromCard(card: Card): Promise<void> {
       brand: card.brand ?? "",
       category: card.category ?? "スプラッシュンゴー",
       address: card.address ?? "",
+      candidate_url: card.candidate_url ?? null,
       latitude: card.lat ?? null,
       longitude: card.lng ?? null,
       location_type: card.location_type ?? null,

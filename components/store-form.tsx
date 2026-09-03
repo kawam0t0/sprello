@@ -21,8 +21,8 @@ import {
 } from "@/components/ui/select"
 import type { Store } from "@/types/database"
 import { geocodeAddress, fetchPopulation, fetchTraffic } from "@/lib/database-operations"
+import { resolveLatLngFromUrl } from "@/lib/maps-url"
 
-const RANK_OPTIONS = ["S", "A", "A-", "B", "B-", "C", "D"]
 const STATUS_OPTIONS = ["検討中", "計画中", "オープン", "閉店", "見送り"]
 const LOCATION_TYPES = ["ロードサイド", "駅前", "住宅街", "商業施設内", "その他"]
 
@@ -118,8 +118,18 @@ export function StoreForm({ store, open, onOpenChange, onSubmit, submitting }: P
 
   const handleSubmit = async () => {
     const patch: Partial<Store> = { ...v }
-    // 住所を変更したら座標を取り直す
-    if (v.address && v.address !== store.address) {
+    // ピン座標：候補地URL（GoogleマップURL）を最優先で正確に取得。
+    // 無い/取れない場合のみ住所からジオコーディング（番地精度は粗め）。
+    let resolved = false
+    if (v.candidate_url) {
+      const r = await resolveLatLngFromUrl(v.candidate_url)
+      if (r) {
+        patch.latitude = r.lat
+        patch.longitude = r.lng
+        resolved = true
+      }
+    }
+    if (!resolved && v.address && v.address !== store.address) {
       const geo = await geocodeAddress(v.address)
       if (geo.lat != null && geo.lng != null) {
         patch.latitude = geo.lat
@@ -145,13 +155,24 @@ export function StoreForm({ store, open, onOpenChange, onSubmit, submitting }: P
                 <Input value={v.store_name ?? ""} onChange={(e) => set({ store_name: e.target.value })} />
               </div>
               <div className="md:col-span-2">
-                <Label className="text-xs text-gray-600">住所（変更すると地図ピンも更新）</Label>
+                <Label className="text-xs text-gray-600">住所</Label>
                 <Input value={v.address ?? ""} onChange={(e) => set({ address: e.target.value })} />
               </div>
               <div>
                 <Label className="text-xs text-gray-600">電話番号</Label>
                 <Input value={v.phone ?? ""} onChange={(e) => set({ phone: e.target.value })} />
               </div>
+            </div>
+            <div>
+              <Label className="text-xs text-gray-600">
+                候補地URL（GoogleマップURL）※入れると、この場所に正確にピンを立て直します
+              </Label>
+              <Input
+                type="url"
+                placeholder="https://maps.app.goo.gl/... または https://www.google.com/maps/...@36.37,139.08..."
+                value={v.candidate_url ?? ""}
+                onChange={(e) => set({ candidate_url: e.target.value })}
+              />
             </div>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
               <div>
@@ -166,15 +187,6 @@ export function StoreForm({ store, open, onOpenChange, onSubmit, submitting }: P
               <div>
                 <Label className="text-xs text-gray-600">開店日</Label>
                 <Input type="date" value={v.open_date ?? ""} onChange={(e) => set({ open_date: e.target.value || null })} />
-              </div>
-              <div>
-                <Label className="text-xs text-gray-600">ランク</Label>
-                <Select value={v.rank ?? ""} onValueChange={(val) => set({ rank: val })}>
-                  <SelectTrigger><SelectValue placeholder="S" /></SelectTrigger>
-                  <SelectContent>
-                    {RANK_OPTIONS.map((r) => (<SelectItem key={r} value={r}>{r}</SelectItem>))}
-                  </SelectContent>
-                </Select>
               </div>
               <div>
                 <Label className="text-xs text-gray-600">ステータス</Label>
@@ -199,25 +211,8 @@ export function StoreForm({ store, open, onOpenChange, onSubmit, submitting }: P
               <NumField label="日中12時間交通量" value={v.traffic_12h} onChange={(n) => set({ traffic_12h: n })} />
               <NumField label="周辺充実度" value={v.surrounding_score} onChange={(n) => set({ surrounding_score: n })} />
               <NumField label="通過速度" value={v.passing_speed} onChange={(n) => set({ passing_speed: n })} />
-              <NumField label="認知度" value={v.awareness} onChange={(n) => set({ awareness: n })} />
               <NumField label="世帯年収（万円）" value={v.household_income} onChange={(n) => set({ household_income: n })} />
-              <div className="flex items-center gap-2 pt-5">
-                <Switch checked={!!v.corner_lot} onCheckedChange={(c) => set({ corner_lot: c })} id="s-corner" />
-                <Label htmlFor="s-corner" className="text-xs text-gray-600">角地</Label>
-              </div>
-              <div className="flex items-center gap-2 pt-5">
-                <Switch checked={!!v.visibility} onCheckedChange={(c) => set({ visibility: c })} id="s-vis" />
-                <Label htmlFor="s-vis" className="text-xs text-gray-600">視認性</Label>
-              </div>
-            </div>
-          </section>
-
-          <section className="space-y-3">
-            <h3 className="text-sm font-semibold text-gray-800 border-b pb-1">物件スペック</h3>
-            <div className="grid grid-cols-3 gap-3">
               <NumField label="広さ（坪）" value={v.size_tsubo} onChange={(n) => set({ size_tsubo: n })} />
-              <NumField label="何台並べるか" value={v.car_capacity} onChange={(n) => set({ car_capacity: n })} />
-              <NumField label="拭上げスペース数" value={v.wipe_spaces} onChange={(n) => set({ wipe_spaces: n })} />
             </div>
           </section>
 

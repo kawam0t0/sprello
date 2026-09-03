@@ -130,6 +130,7 @@ export interface Store {
   mail: string | null
   latitude: number | null
   longitude: number | null
+  candidate_url?: string | null // GoogleマップURL（正確なピン位置の元）
   district?: string | null
   property_no?: string | null
   location_type?: string | null

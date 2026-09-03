@@ -5,6 +5,7 @@ import type { BoardData, Card, Store } from "@/types/database"
 import { prefFromAddress, prefFromMuniCd } from "@/types/database"
 import { ExternalLink } from 'lucide-react'
 import { updateCard, getStores } from "@/lib/database-operations"
+import { resolveLatLngFromUrl } from "@/lib/maps-url"
 import {
   Dialog,
   DialogContent,
@@ -179,24 +180,37 @@ export function TimelineView({ board }: TimelineViewProps) {
     prefFromAddress(s.prefecture) || prefFromAddress(s.address) || null
   const areaLabel = (pref: string | null) => (pref ? `${pref}エリア` : "その他エリア")
 
-  // prefecture が無いカードは座標(候補地URL由来)→逆ジオコーダで都道府県を判定してキャッシュ
+  // 都道府県が住所から分からないカードは、候補地URL（無ければ保存座標）→逆ジオコーダで判定
   useEffect(() => {
     const targets = timelineItems.filter((it) => {
       const c = it.card
       if (prefFromAddress(c.prefecture) || prefFromAddress(c.address)) return false
       if (regionResolvedRef.current.has(c.id)) return false
-      return typeof c.lat === "number" && typeof c.lng === "number"
+      const hasCoords = typeof c.lat === "number" && typeof c.lng === "number"
+      return hasCoords || !!c.candidate_url
     })
     if (targets.length === 0) return
     let cancelled = false
     ;(async () => {
       const updates: Record<string, string> = {}
       for (const it of targets) {
-        regionResolvedRef.current.add(it.card.id)
+        const c = it.card
+        regionResolvedRef.current.add(c.id)
         try {
-          const r = await fetch(`/api/revgeo?lat=${it.card.lat}&lng=${it.card.lng}`).then((x) => x.json())
-          const p = prefFromMuniCd(r?.muniCd)
-          if (p) updates[it.card.id] = p
+          let lat = typeof c.lat === "number" ? c.lat : null
+          let lng = typeof c.lng === "number" ? c.lng : null
+          // 候補地URLを最優先で解決（保存座標が無くてもエリア判定できる）
+          if (c.candidate_url) {
+            const r = await resolveLatLngFromUrl(c.candidate_url)
+            if (r) {
+              lat = r.lat
+              lng = r.lng
+            }
+          }
+          if (lat == null || lng == null) continue
+          const rr = await fetch(`/api/revgeo?lat=${lat}&lng=${lng}`).then((x) => x.json())
+          const p = prefFromMuniCd(rr?.muniCd)
+          if (p) updates[c.id] = p
         } catch {
           /* 失敗は無視（その他扱い） */
         }

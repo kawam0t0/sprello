@@ -160,48 +160,6 @@ export function MapView({ cards }: MapViewProps) {
     refreshStores()
   }, [])
 
-  // 店舗一覧表の「住所」を正としてピン位置を決める。
-  // 住所をジオコーディングした座標を storeGeo に保持し、表示・DB座標より優先する。
-  // （＝店舗一覧の住所どおりの位置にOPEN店舗のピンを立てる）
-  const [storeGeo, setStoreGeo] = useState<Record<string, { lat: number; lng: number }>>({})
-  const geoCacheRef = useRef<Record<string, { lat: number; lng: number } | null>>({})
-  const geocodedRef = useRef<Set<string>>(new Set())
-  useEffect(() => {
-    const targets = stores.filter((s) => s.address && !geocodedRef.current.has(s.id))
-    if (targets.length === 0) return
-    let cancelled = false
-    ;(async () => {
-      const updates: Record<string, { lat: number; lng: number }> = {}
-      for (const s of targets) {
-        geocodedRef.current.add(s.id)
-        const addr = String(s.address)
-        let geo = geoCacheRef.current[addr]
-        if (geo === undefined) {
-          const g = await geocodeAddress(addr)
-          geo = g.lat != null && g.lng != null ? { lat: g.lat, lng: g.lng } : null
-          geoCacheRef.current[addr] = geo
-        }
-        if (cancelled) return
-        if (geo) {
-          updates[s.id] = geo
-          // 保存座標と大きく違う場合はDBにも書き戻す（次回以降のため。失敗は無視）
-          const curLat = s.latitude == null ? NaN : Number(s.latitude)
-          const curLng = s.longitude == null ? NaN : Number(s.longitude)
-          const off =
-            !Number.isFinite(curLat) ||
-            !Number.isFinite(curLng) ||
-            Math.abs(curLat - geo.lat) > 0.0005 ||
-            Math.abs(curLng - geo.lng) > 0.0005
-          if (off) updateStore(s.id, { latitude: geo.lat, longitude: geo.lng }).catch(() => {})
-        }
-      }
-      if (!cancelled && Object.keys(updates).length) setStoreGeo((prev) => ({ ...prev, ...updates }))
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [stores])
-
   const [visibleCats, setVisibleCats] = useState<Record<ProjectCategory, boolean>>({
     スプラッシュンゴー: true,
     "D-Splash": true,
@@ -237,9 +195,21 @@ export function MapView({ cards }: MapViewProps) {
   const [saving, setSaving] = useState(false)
 
   const allItems = useMemo(() => {
-    // 住所ジオコーディング結果(storeGeo)を優先してピン位置を決める
-    const s = stores.map((st) => storeToItem(st, storeGeo[st.id])).filter(Boolean) as MapItem[]
-    // OPEN段階のプロジェクトは自社店舗(stores)へ同期済み（store_code=PJ-<cardId>）。
+    // OPEN店舗の位置は「元になったカードの候補地URL座標」を最優先にする。
+    // （住所ジオコーディングは番地精度が粗くズレるため使わない。カード座標→保存座標の順）
+    const cardById: Record<string, Card & { listTitle?: string }> = {}
+    for (const c of cards) cardById[c.id] = c
+    const s = stores
+      .map((st) => {
+        let pos: { lat: number; lng: number } | undefined
+        const code = st.store_code ?? ""
+        if (code.startsWith("PJ-")) {
+          const c = cardById[code.slice(3)]
+          if (c && typeof c.lat === "number" && typeof c.lng === "number") pos = { lat: c.lat, lng: c.lng }
+        }
+        return storeToItem(st, pos)
+      })
+      .filter(Boolean) as MapItem[]
     // 二重ピンを避けるため、対応する店舗があるOPENプロジェクトは地図から除外。
     const storeCodes = new Set(stores.map((x) => x.store_code).filter(Boolean) as string[])
     const p = (cards.map(cardToItem).filter(Boolean) as MapItem[]).filter((it) => {
@@ -248,7 +218,7 @@ export function MapView({ cards }: MapViewProps) {
       return !storeCodes.has(`PJ-${cardId}`)
     })
     return [...s, ...p]
-  }, [stores, cards, storeGeo])
+  }, [stores, cards])
 
   const visibleItems = useMemo(
     () => allItems.filter((it) => visibleCats[it.category] && visibleStages[stageOf(it).label]),

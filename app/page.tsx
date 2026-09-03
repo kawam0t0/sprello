@@ -942,17 +942,16 @@ export default function Home() {
                 </div>
               </div>
 
-              {/* 図面 */}
+              {/* 資料 */}
               <div className="space-y-2">
-                <h3 className="text-lg font-semibold text-gray-800">図面</h3>
+                <h3 className="text-lg font-semibold text-gray-800">資料</h3>
                 <div className="flex items-center gap-3">
                   <label className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-gray-300 text-sm cursor-pointer hover:bg-gray-50">
                     <Plus className="w-4 h-4" />
-                    図面を追加
+                    資料を追加
                     <input
                       type="file"
                       multiple
-                      accept="image/*,application/pdf"
                       className="hidden"
                       disabled={uploadingDrawing}
                       onChange={async (e) => {
@@ -969,7 +968,7 @@ export default function Home() {
                           })
                         } catch (err) {
                           alert(
-                            "図面のアップロードに失敗しました: " +
+                            "資料のアップロードに失敗しました: " +
                               (err instanceof Error ? err.message : "不明なエラー") +
                               "\n（Supabaseに drawings バケットが未作成の可能性があります）",
                           )
@@ -980,7 +979,7 @@ export default function Home() {
                     />
                   </label>
                   {uploadingDrawing && <span className="text-sm text-gray-500">アップロード中…</span>}
-                  <span className="text-[11px] text-gray-400">画像・PDF対応。保存を押すと確定します</span>
+                  <span className="text-[11px] text-gray-400">画像・PDF・Excel等どんなファイルでもOK。保存を押すと確定します</span>
                 </div>
                 {(selectedCard.drawings ?? []).length > 0 && (
                   <ul className="space-y-1">
