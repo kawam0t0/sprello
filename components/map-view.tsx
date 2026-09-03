@@ -162,8 +162,7 @@ export function MapView({ cards }: MapViewProps) {
 
   const [visibleCats, setVisibleCats] = useState<Record<ProjectCategory, boolean>>({
     スプラッシュンゴー: true,
-    "D-Splash": true,
-    "丸紅-Splash": true,
+    "D-wash×SPB": true,
   })
   const [activeRadii, setActiveRadii] = useState<Record<number, boolean>>({ 1: false, 2: false, 5: false })
   const [circleAll, setCircleAll] = useState(false)

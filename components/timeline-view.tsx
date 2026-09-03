@@ -178,7 +178,14 @@ export function TimelineView({ board }: TimelineViewProps) {
   }
   const prefOfStore = (s: Store): string | null =>
     prefFromAddress(s.prefecture) || prefFromAddress(s.address) || null
-  const areaLabel = (pref: string | null) => (pref ? `${pref}エリア` : "その他エリア")
+  // エリアは「群馬・鹿児島・その他」の3区分。栃木は群馬に含める。
+  const areaOf = (pref: string | null): string => {
+    if (pref === "群馬" || pref === "栃木") return "群馬"
+    if (pref === "鹿児島") return "鹿児島"
+    return "その他"
+  }
+  const areaOfCard = (c: Card) => areaOf(prefOfCard(c))
+  const areaOfStore = (s: Store) => areaOf(prefOfStore(s))
 
   // 都道府県が住所から分からないカードは、候補地URL（無ければ保存座標）→逆ジオコーダで判定
   useEffect(() => {
@@ -222,27 +229,26 @@ export function TimelineView({ board }: TimelineViewProps) {
     }
   }, [timelineItems])
 
-  // エリア（都道府県）ごとのフィルタ用の一覧と件数（カード＋自社店舗）
+  // エリア（群馬／鹿児島／その他 の3区分）ごとのフィルタ用の一覧と件数（カード＋自社店舗）
   const areaOptions = useMemo(() => {
-    const counts = new Map<string, number>()
+    const order = ["群馬", "鹿児島", "その他"]
+    const counts = new Map<string, number>([["群馬", 0], ["鹿児島", 0], ["その他", 0]])
     timelineItems.forEach((item) => {
-      const p = prefOfCard(item.card)
-      counts.set(p ?? "その他", (counts.get(p ?? "その他") || 0) + 1)
+      const a = areaOfCard(item.card)
+      counts.set(a, (counts.get(a) || 0) + 1)
     })
     stores.forEach((s) => {
-      const p = prefOfStore(s)
-      counts.set(p ?? "その他", (counts.get(p ?? "その他") || 0) + 1)
+      const a = areaOfStore(s)
+      counts.set(a, (counts.get(a) || 0) + 1)
     })
-    return Array.from(counts.entries())
-      .map(([name, count]) => ({ name, count }))
-      .sort((a, b) => (a.name === "その他" ? 1 : b.name === "その他" ? -1 : b.count - a.count))
+    return order.map((name) => ({ name, count: counts.get(name) || 0 }))
   }, [timelineItems, regionByCard, stores])
 
   const filteredItems = useMemo(() => {
     return timelineItems.filter(
       (item) =>
         (yomiFilter === "all" || item.listTitle === yomiFilter) &&
-        (areaFilter === "all" || (prefOfCard(item.card) ?? "その他") === areaFilter),
+        (areaFilter === "all" || areaOfCard(item.card) === areaFilter),
     )
   }, [timelineItems, yomiFilter, areaFilter, regionByCard])
 
@@ -266,7 +272,7 @@ export function TimelineView({ board }: TimelineViewProps) {
     })
     // 既存の自社店舗（OPEN済み）を加算。エリア絞り込みは尊重する。
     stores.forEach((s) => {
-      if (areaFilter !== "all" && (prefOfStore(s) ?? "その他") !== areaFilter) return
+      if (areaFilter !== "all" && areaOfStore(s) !== areaFilter) return
       const od = s.open_date ? new Date(s.open_date) : null
       if (!od || od <= mEnd) open++
     })

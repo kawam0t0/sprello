@@ -1,10 +1,9 @@
 // 出店プロジェクトのカテゴリ（ブランド）
-export type ProjectCategory = "スプラッシュンゴー" | "D-Splash" | "丸紅-Splash"
+export type ProjectCategory = "スプラッシュンゴー" | "D-wash×SPB"
 
 export const PROJECT_CATEGORIES: ProjectCategory[] = [
   "スプラッシュンゴー",
-  "D-Splash",
-  "丸紅-Splash",
+  "D-wash×SPB",
 ]
 
 // 段階（ヨミ）＝ボードの列。6段階。並び順もこの順。（設営中・Dヨミは廃止）
@@ -104,16 +103,13 @@ export function regionFromMuniCd(muniCd?: string | null): string {
 // カテゴリごとのピン/バッジ色（Google Maps・UI共通）
 export const CATEGORY_COLORS: Record<ProjectCategory, string> = {
   スプラッシュンゴー: "#2563eb", // blue
-  "D-Splash": "#0891b2", // cyan
-  "丸紅-Splash": "#d97706", // amber
+  "D-wash×SPB": "#0891b2", // cyan
 }
 
-// 旧カテゴリや空値を新3カテゴリに正規化（既存データ対策）
+// 旧カテゴリや空値を新カテゴリに正規化（既存データ対策）
+// D-Splash → D-wash×SPB、丸紅-Splash や旧「自社店舗」等 → スプラッシュンゴー
 export function normalizeCategory(value?: string | null): ProjectCategory {
-  if (value === "D-Splash" || value === "丸紅-Splash" || value === "スプラッシュンゴー") {
-    return value
-  }
-  // 旧「自社店舗」その他はスプラッシュンゴー扱い
+  if (value === "D-wash×SPB" || value === "D-Splash") return "D-wash×SPB"
   return "スプラッシュンゴー"
 }
 
