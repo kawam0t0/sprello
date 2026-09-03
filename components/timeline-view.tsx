@@ -1,10 +1,10 @@
 "use client"
 
-import { useMemo, useState } from "react"
-import type { BoardData, Card } from "@/types/database"
-import { regionOf } from "@/types/database"
+import { useEffect, useMemo, useRef, useState } from "react"
+import type { BoardData, Card, Store } from "@/types/database"
+import { regionOf, regionFromMuniCd } from "@/types/database"
 import { ExternalLink } from 'lucide-react'
-import { updateCard } from "@/lib/database-operations"
+import { updateCard, getStores } from "@/lib/database-operations"
 import {
   Dialog,
   DialogContent,
@@ -46,6 +46,14 @@ export function TimelineView({ board }: TimelineViewProps) {
   const [isUpdating, setIsUpdating] = useState(false)
   const [yomiFilter, setYomiFilter] = useState<string>("all")
   const [areaFilter, setAreaFilter] = useState<string>("all")
+  // 既存の自社店舗（OPEN済み）。月ポップアップのOPEN数に加算する。
+  const [stores, setStores] = useState<Store[]>([])
+  useEffect(() => {
+    getStores().then(setStores).catch(() => {})
+  }, [])
+  // カードのエリア（地方）。prefecture が無い場合は座標から逆ジオコーダで判定してキャッシュ。
+  const [regionByCard, setRegionByCard] = useState<Record<string, string>>({})
+  const regionResolvedRef = useRef<Set<string>>(new Set())
 
   const timelineItems = useMemo(() => {
     const items: TimelineItem[] = []
@@ -161,41 +169,85 @@ export function TimelineView({ board }: TimelineViewProps) {
     return present.map((title) => ({ title, count: counts.get(title) || 0 }))
   }, [timelineItems])
 
+  // カードのエリア（地方）を返す。prefecture があればそれ、無ければ座標判定のキャッシュ。
+  const regionOfCard = (c: Card): string => {
+    const byPref = regionOf(c.prefecture)
+    if (c.prefecture && byPref !== "その他") return byPref
+    return regionByCard[c.id] ?? "その他"
+  }
+
+  // prefecture が無いカードは座標（候補地URL由来）から逆ジオコーダで地方を判定
+  useEffect(() => {
+    const targets = timelineItems.filter((it) => {
+      const c = it.card
+      if (c.prefecture && regionOf(c.prefecture) !== "その他") return false
+      if (regionResolvedRef.current.has(c.id)) return false
+      return typeof c.lat === "number" && typeof c.lng === "number"
+    })
+    if (targets.length === 0) return
+    let cancelled = false
+    ;(async () => {
+      const updates: Record<string, string> = {}
+      for (const it of targets) {
+        regionResolvedRef.current.add(it.card.id)
+        try {
+          const r = await fetch(`/api/revgeo?lat=${it.card.lat}&lng=${it.card.lng}`).then((x) => x.json())
+          updates[it.card.id] = regionFromMuniCd(r?.muniCd)
+        } catch {
+          updates[it.card.id] = "その他"
+        }
+      }
+      if (!cancelled && Object.keys(updates).length) setRegionByCard((prev) => ({ ...prev, ...updates }))
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [timelineItems])
+
   // エリア（地方）ごとのフィルタ用の一覧と件数
   const areaOptions = useMemo(() => {
     const order = ["北海道", "東北", "関東", "中部", "近畿", "中国", "四国", "九州", "その他"]
     const counts = new Map<string, number>()
     timelineItems.forEach((item) => {
-      const r = regionOf(item.card.prefecture)
+      const r = regionOfCard(item.card)
       counts.set(r, (counts.get(r) || 0) + 1)
     })
     const present = Array.from(counts.keys())
     present.sort((a, b) => order.indexOf(a) - order.indexOf(b))
     return present.map((name) => ({ name, count: counts.get(name) || 0 }))
-  }, [timelineItems])
+  }, [timelineItems, regionByCard])
 
   const filteredItems = useMemo(() => {
     return timelineItems.filter(
       (item) =>
         (yomiFilter === "all" || item.listTitle === yomiFilter) &&
-        (areaFilter === "all" || regionOf(item.card.prefecture) === areaFilter),
+        (areaFilter === "all" || regionOfCard(item.card) === areaFilter),
     )
-  }, [timelineItems, yomiFilter, areaFilter])
+  }, [timelineItems, yomiFilter, areaFilter, regionByCard])
 
   // 指定した年月時点での各段階の店舗数（月ヘッダーのホバーで表示）
+  // OPEN数には「既存の自社店舗（OPEN済み）」も加算する（重複はPJ-連携店舗を除外）。
   const monthStats = (m: { year: number; month: number }) => {
     const mStart = new Date(m.year, m.month, 1)
     const mEnd = new Date(m.year, m.month + 1, 0, 23, 59, 59)
     const inter = (s: Date | null, e: Date | null) => !!s && !!e && s <= mEnd && e >= mStart
+    const storeCodes = new Set(stores.map((s) => s.store_code).filter(Boolean) as string[])
     let open = 0,
       koji = 0,
       setup = 0,
       follow = 0
     filteredItems.forEach((it) => {
-      if (it.openDate && it.openDate <= mEnd) open++
+      // OPEN連携済みのカードは自社店舗側で数えるため、ここでは除外（二重計上防止）
+      if (it.openDate && it.openDate <= mEnd && !storeCodes.has(`PJ-${it.card.id}`)) open++
       if (inter(it.startDate, it.startEndDate)) koji++
       if (inter(it.setupStartDate, it.setupEndDate)) setup++
       if (inter(it.openFollowStartDate, it.openFollowEndDate)) follow++
+    })
+    // 既存の自社店舗（OPEN済み）を加算。エリア絞り込みは尊重する。
+    stores.forEach((s) => {
+      if (areaFilter !== "all" && regionOf(s.prefecture) !== areaFilter) return
+      const od = s.open_date ? new Date(s.open_date) : null
+      if (!od || od <= mEnd) open++
     })
     return { open, koji, setup, follow }
   }

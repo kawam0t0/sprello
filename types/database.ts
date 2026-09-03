@@ -56,6 +56,23 @@ export function regionOf(pref?: string | null): string {
   return PREF_CORE_REGION[core] ?? "その他"
 }
 
+// 市区町村コード（JIS・先頭2桁=都道府県コード）→ エリア（地方）。
+// 座標→逆ジオコーダの muniCd から地方を判定するのに使う。
+export function regionFromMuniCd(muniCd?: string | null): string {
+  if (!muniCd) return "その他"
+  const c = Number(String(muniCd).padStart(5, "0").slice(0, 2))
+  if (!Number.isFinite(c) || c <= 0) return "その他"
+  if (c === 1) return "北海道"
+  if (c >= 2 && c <= 7) return "東北"
+  if (c >= 8 && c <= 14) return "関東"
+  if (c >= 15 && c <= 23) return "中部"
+  if (c >= 24 && c <= 30) return "近畿"
+  if (c >= 31 && c <= 35) return "中国"
+  if (c >= 36 && c <= 39) return "四国"
+  if (c >= 40 && c <= 47) return "九州"
+  return "その他"
+}
+
 // カテゴリごとのピン/バッジ色（Google Maps・UI共通）
 export const CATEGORY_COLORS: Record<ProjectCategory, string> = {
   スプラッシュンゴー: "#2563eb", // blue
