@@ -357,7 +357,7 @@ export function MapView({ cards }: MapViewProps) {
               onSelect={toggleSelect}
             />
             <YotoLayer enabled={showYoto} onLegend={setYotoLegend} />
-            <SpotInfoLayer enabled={!measuring && !isoOn} />
+            <SpotInfoLayer enabled={!measuring && !isoOn} others={visibleItems} />
             <MeasureLayer
               measuring={measuring}
               points={measurePts}
@@ -1075,18 +1075,42 @@ function YotoLayer({
   return null
 }
 
-// ---- 地点クリックでその場の指標（交通量・市区町村の年収）をポップアップ ----
-function SpotInfoLayer({ enabled }: { enabled: boolean }) {
+// ---- 地点クリックでその場の指標（交通量・年収・人口）＋2km商圏をポップアップ ----
+function SpotInfoLayer({ enabled, others }: { enabled: boolean; others: MapItem[] }) {
   const map = useMap()
 
   useEffect(() => {
     if (!map || typeof google === "undefined" || !enabled) return
     const info = new google.maps.InfoWindow()
+    let circle: google.maps.Circle | null = null
 
     const l = map.addListener("click", async (ev: any) => {
       if (!ev.latLng) return
       const lat = ev.latLng.lat()
       const lng = ev.latLng.lng()
+
+      // クリック地点に2kmの同心円。既存店舗の2km圏と重なる＝赤／重ならない＝青
+      const R = 2000
+      const nearest = others.reduce((min, o) => {
+        const d = haversineM({ lat, lng }, { lat: o.lat, lng: o.lng })
+        return d < min ? d : min
+      }, Infinity)
+      const ng = nearest < 2 * R
+      const cColor = ng ? "#dc2626" : "#2563eb"
+      if (circle) circle.setMap(null)
+      circle = new google.maps.Circle({
+        map,
+        center: { lat, lng },
+        radius: R,
+        clickable: false,
+        strokeColor: cColor,
+        strokeOpacity: 0.9,
+        strokeWeight: 2,
+        fillColor: ng ? "#ef4444" : "#3b82f6",
+        fillOpacity: 0.12,
+        zIndex: 2,
+      })
+
       info.setContent('<div style="font-size:12px;padding:2px 4px">読み込み中…</div>')
       info.setPosition({ lat, lng })
       info.open({ map })
@@ -1113,11 +1137,16 @@ function SpotInfoLayer({ enabled }: { enabled: boolean }) {
             .map((v) => (v == null ? "—" : Number(v).toLocaleString()))
             .join(" / ")
         : "— / — / —"
+      const verdict = ng
+        ? `<span style="color:#dc2626;font-weight:700">近くに店舗あり（2km圏が重複）</span>`
+        : `<span style="color:#2563eb;font-weight:700">近くに店舗なし（2km圏の重複なし）</span>`
+      const distTxt = Number.isFinite(nearest) ? `最寄り店舗まで 約${(nearest / 1000).toFixed(1)}km` : ""
 
       info.setContent(
         `<div style="font-size:12px;line-height:1.7;min-width:220px;max-width:270px">` +
           `<div style="font-weight:700;font-size:13px;color:#111">${escapeXml(String(area))} 付近</div>` +
-          `<div style="margin-top:4px;display:flex;justify-content:space-between;gap:10px"><span style="color:#888">日中12h交通量${t && "found" in t && t.found && (t as any).vehicle ? "（" + (t as any).vehicle + "）" : ""}</span><span style="font-weight:600;color:#222">${traffic}</span></div>` +
+          `<div style="margin:3px 0">${verdict}${distTxt ? ` <span style="color:#888;font-size:11px">（${distTxt}）</span>` : ""}</div>` +
+          `<div style="margin-top:2px;display:flex;justify-content:space-between;gap:10px"><span style="color:#888">日中12h交通量${t && "found" in t && t.found && (t as any).vehicle ? "（" + (t as any).vehicle + "）" : ""}</span><span style="font-weight:600;color:#222">${traffic}</span></div>` +
           `<div style="display:flex;justify-content:space-between;gap:10px"><span style="color:#888">推計世帯年収</span><span style="font-weight:600;color:#222">${income}</span></div>` +
           `<div style="display:flex;justify-content:space-between;gap:10px"><span style="color:#888">商圏人口 1/2/5km</span><span style="font-weight:600;color:#222">${popTxt}</span></div>` +
           `<div style="color:#aaa;font-size:10px;margin-top:5px">概算（交通量=センサスR3／世帯年収=市区町村の課税所得からの推計／人口=国勢2020メッシュ）</div>` +
@@ -1125,11 +1154,21 @@ function SpotInfoLayer({ enabled }: { enabled: boolean }) {
       )
     })
 
+    // 情報ウィンドウを閉じたら円も消す
+    const closeL = info.addListener("closeclick", () => {
+      if (circle) {
+        circle.setMap(null)
+        circle = null
+      }
+    })
+
     return () => {
       google.maps.event.removeListener(l)
+      google.maps.event.removeListener(closeL)
       info.close()
+      if (circle) circle.setMap(null)
     }
-  }, [map, enabled])
+  }, [map, enabled, others])
 
   return null
 }
