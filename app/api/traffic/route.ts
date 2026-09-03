@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
+import { KOGATA_12H } from "@/lib/census-kogata"
 
 // 道路交通センサス（令和3年度 一般交通量調査）の「昼間12時間交通量」を
 // 候補地の緯度経度から最寄り調査区間で取得する。
 // 国交省の可視化ツールが配信している公開GeoJSONタイル（z=13/道路種別別レイヤ）を
-// サーバー側で直接読み、最寄り区間の 12H_trf（昼間12時間交通量・全車上下計）を返す。
+// サーバー側で直接読み、最寄り区間を特定する。
+// 既定は「小型車（上下合計）」の昼間12時間交通量を返す（可視化ツールの小型車と一致）。
+// 小型車は箇所別基本表(kasyoNN.csv)由来の対応表 KOGATA_12H を区間番号で引く。
+// 対応県が無い区間はタイルの 12H_trf（全車上下計）にフォールバック。
 // APIキー・DB取込は不要。値は令和3年度センサスの実測/推計値。
 
 const BASE = "https://www.mlit.go.jp/road/ir/ir-data/census_visualizationR3"
@@ -102,63 +106,90 @@ export async function GET(req: NextRequest) {
   }
   const results = await Promise.all(jobs)
 
-  let best:
-    | {
-        d: number
-        traffic: number
-        layer: string
-        census: string
-        speed: number | null
-        lanes: number | null
-        props: Record<string, any>
-      }
-    | null = null
+  // 候補区間を全部集める（distance と 12H_trf 全車）
+  type Cand = {
+    d: number
+    traffic: number
+    layer: string
+    census: string
+    lanes: number | null
+    props: Record<string, any>
+  }
+  const cands: Cand[] = []
   for (const { layer, features } of results) {
     if (!features) continue
     for (const f of features) {
       const t = Number(f?.properties?.["12H_trf"])
       if (!Number.isFinite(t)) continue
       const d = minDistToGeom(lat, lng, f.geometry)
-      if (!best || d < best.d) {
-        best = {
-          d,
-          traffic: t,
-          layer,
-          census: String(f?.properties?.census ?? ""),
-          speed: Number.isFinite(Number(f?.properties?.speed_DT)) ? Number(f.properties.speed_DT) : null,
-          lanes: Number.isFinite(Number(f?.properties?.Linenum)) ? Number(f.properties.Linenum) : null,
-          props: f?.properties ?? {},
-        }
-      }
+      cands.push({
+        d,
+        traffic: t,
+        layer,
+        census: String(f?.properties?.census ?? ""),
+        lanes: Number.isFinite(Number(f?.properties?.Linenum)) ? Number(f.properties.Linenum) : null,
+        props: f?.properties ?? {},
+      })
     }
   }
+  cands.sort((a, b) => a.d - b.d)
 
-  // デバッグ: 最寄り区間の全プロパティを返す（フィールド名確認用。?debug=1）
+  const MAX_DIST = 2000
+  // 主要道優先: 近傍(NEAR以内)で最も交通量が多い区間を選ぶ。
+  // 近傍に無ければ最寄り区間にフォールバック（MAX_DIST以内）。
+  const NEAR = 350
+  const near = cands.filter((c) => c.d <= NEAR)
+  let best: Cand | null = null
+  if (near.length > 0) {
+    best = near.reduce((mx, c) => (c.traffic > mx.traffic ? c : mx), near[0])
+  } else {
+    best = cands.find((c) => c.d <= MAX_DIST) ?? null
+  }
+
+  // デバッグ: 近傍候補の一覧を返す（区間選択の調整用。?debug=1）
   if (searchParams.get("debug") === "1") {
     return NextResponse.json({
-      found: !!best,
-      distance_m: best ? Math.round(best.d) : null,
-      layer: best?.layer ?? null,
-      properties: best?.props ?? null,
+      chosen: best
+        ? { census: best.census, distance_m: Math.round(best.d), all_12h: best.traffic, kogata: KOGATA_12H[best.census] ?? null }
+        : null,
+      candidates: cands.slice(0, 12).map((c) => ({
+        census: c.census,
+        distance_m: Math.round(c.d),
+        all_12h: c.traffic,
+        kogata: KOGATA_12H[c.census] ?? null,
+      })),
     })
   }
 
-  // 最寄り区間が遠すぎる場合は代表性が低いので「見つからない」とする
-  const MAX_DIST = 2000
-  if (!best || best.d > MAX_DIST) {
+  if (!best) {
     return NextResponse.json({
       found: false,
       message: "近くに交通量調査区間が見つかりませんでした（半径約2km内）。手入力してください。",
     })
   }
 
+  // 小型車の上り/下り（片側）。対応表に無ければ全車(12H_trf 上下計)にフォールバック。
+  const kg = KOGATA_12H[best.census]
+  const isKogata = Array.isArray(kg)
+  const up = isKogata ? kg[0] : null
+  const down = isKogata ? kg[1] : null
+  // 片側（多い方）を採用
+  const side = isKogata ? Math.max(up ?? 0, down ?? 0) : null
+  const traffic_12h = isKogata ? Math.round(side as number) : Math.round(best.traffic)
+
   return NextResponse.json({
     found: true,
-    traffic_12h: Math.round(best.traffic),
+    traffic_12h, // 片側(多い方)の小型車12時間。未収録県は全車(上下計)
+    traffic_up: up,
+    traffic_down: down,
+    traffic_12h_all: Math.round(best.traffic), // 参考: 全車（上下合計）
+    vehicle: isKogata ? "小型車(片側)" : "全車",
     distance_m: Math.round(best.d),
     road_class: LAYER_LABEL[best.layer] ?? best.layer,
     census_no: best.census,
     lanes: best.lanes,
-    source: "道路交通センサス 令和3年度 一般交通量調査（昼間12時間交通量）",
+    source: isKogata
+      ? "道路交通センサス 令和3年度（昼間12時間・小型車・片側 多い方）"
+      : "道路交通センサス 令和3年度（昼間12時間・全車・上下合計 ※小型車データ未収録県）",
   })
 }

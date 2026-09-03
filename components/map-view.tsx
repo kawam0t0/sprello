@@ -1142,7 +1142,7 @@ function SpotInfoLayer({ enabled }: { enabled: boolean }) {
       info.setContent(
         `<div style="font-size:12px;line-height:1.7;min-width:210px;max-width:260px">` +
           `<div style="font-weight:700;font-size:13px;color:#111">${escapeXml(String(area))} 付近</div>` +
-          `<div style="margin-top:4px;display:flex;justify-content:space-between;gap:10px"><span style="color:#888">日中12h交通量</span><span style="font-weight:600;color:#222">${traffic}</span></div>` +
+          `<div style="margin-top:4px;display:flex;justify-content:space-between;gap:10px"><span style="color:#888">日中12h交通量${t && "found" in t && t.found && (t as any).vehicle ? "（" + (t as any).vehicle + "）" : ""}</span><span style="font-weight:600;color:#222">${traffic}</span></div>` +
           `<div style="display:flex;justify-content:space-between;gap:10px"><span style="color:#888">推計世帯年収</span><span style="font-weight:600;color:#222">${income}</span></div>` +
           `<div style="color:#aaa;font-size:10px;margin-top:5px">概算（交通量=センサスR3／世帯年収=市区町村の課税所得からの推計）</div>` +
           `</div>`,

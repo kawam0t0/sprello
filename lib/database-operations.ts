@@ -36,7 +36,17 @@ export async function fetchTraffic(
   lat: number,
   lng: number,
 ): Promise<
-  | { found: true; traffic_12h: number; distance_m: number; road_class: string; lanes: number | null }
+  | {
+      found: true
+      traffic_12h: number
+      traffic_up?: number | null
+      traffic_down?: number | null
+      traffic_12h_all?: number
+      vehicle?: string
+      distance_m: number
+      road_class: string
+      lanes: number | null
+    }
   | { found: false; message: string }
   | null
 > {
@@ -51,6 +61,10 @@ export async function fetchTraffic(
       return {
         found: true,
         traffic_12h: data.traffic_12h,
+        traffic_up: data.traffic_up ?? null,
+        traffic_down: data.traffic_down ?? null,
+        traffic_12h_all: data.traffic_12h_all,
+        vehicle: data.vehicle,
         distance_m: data.distance_m,
         road_class: data.road_class,
         lanes: data.lanes ?? null,

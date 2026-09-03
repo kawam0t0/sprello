@@ -708,8 +708,17 @@ export default function Home() {
                             if (t && t.found) {
                               setSelectedCard({ ...selectedCard, traffic_12h: t.traffic_12h })
                               const dist = (t.distance_m / 1000).toFixed(1)
+                              const veh = t.vehicle ?? "小型車(片側)"
+                              const ud =
+                                t.traffic_up != null && t.traffic_down != null
+                                  ? `\n（上り ${Number(t.traffic_up).toLocaleString()} ／ 下り ${Number(t.traffic_down).toLocaleString()}）`
+                                  : ""
+                              const allTxt =
+                                t.traffic_12h_all != null && veh.startsWith("小型車")
+                                  ? `\n（参考：全車上下計 ${t.traffic_12h_all.toLocaleString()} 台）`
+                                  : ""
                               alert(
-                                `最寄り調査区間（${t.road_class} / 約${dist}km）の\n昼間12時間交通量: ${t.traffic_12h.toLocaleString()} 台 を入力しました\n（道路交通センサス 令和3年度）`,
+                                `調査区間（${t.road_class} / 約${dist}km）の\n昼間12時間交通量【${veh}】: ${t.traffic_12h.toLocaleString()} 台 を入力しました${ud}${allTxt}\n（道路交通センサス 令和3年度）`,
                               )
                             } else if (t && "message" in t) {
                               alert(t.message)
