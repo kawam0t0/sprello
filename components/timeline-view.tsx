@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react"
 import type { BoardData, Card, Store } from "@/types/database"
-import { regionOf, regionFromMuniCd } from "@/types/database"
+import { prefFromAddress, prefFromMuniCd } from "@/types/database"
 import { ExternalLink } from 'lucide-react'
 import { updateCard, getStores } from "@/lib/database-operations"
 import {
@@ -169,18 +169,21 @@ export function TimelineView({ board }: TimelineViewProps) {
     return present.map((title) => ({ title, count: counts.get(title) || 0 }))
   }, [timelineItems])
 
-  // カードのエリア（地方）を返す。prefecture があればそれ、無ければ座標判定のキャッシュ。
-  const regionOfCard = (c: Card): string => {
-    const byPref = regionOf(c.prefecture)
-    if (c.prefecture && byPref !== "その他") return byPref
-    return regionByCard[c.id] ?? "その他"
+  // 都道府県コア名（群馬/鹿児島…）を返す。無ければ座標判定のキャッシュ、それも無ければ null。
+  const prefOfCard = (c: Card): string | null => {
+    const fromPref = prefFromAddress(c.prefecture) || prefFromAddress(c.address)
+    if (fromPref) return fromPref
+    return regionByCard[c.id] ?? null
   }
+  const prefOfStore = (s: Store): string | null =>
+    prefFromAddress(s.prefecture) || prefFromAddress(s.address) || null
+  const areaLabel = (pref: string | null) => (pref ? `${pref}エリア` : "その他エリア")
 
-  // prefecture が無いカードは座標（候補地URL由来）から逆ジオコーダで地方を判定
+  // prefecture が無いカードは座標(候補地URL由来)→逆ジオコーダで都道府県を判定してキャッシュ
   useEffect(() => {
     const targets = timelineItems.filter((it) => {
       const c = it.card
-      if (c.prefecture && regionOf(c.prefecture) !== "その他") return false
+      if (prefFromAddress(c.prefecture) || prefFromAddress(c.address)) return false
       if (regionResolvedRef.current.has(c.id)) return false
       return typeof c.lat === "number" && typeof c.lng === "number"
     })
@@ -192,9 +195,10 @@ export function TimelineView({ board }: TimelineViewProps) {
         regionResolvedRef.current.add(it.card.id)
         try {
           const r = await fetch(`/api/revgeo?lat=${it.card.lat}&lng=${it.card.lng}`).then((x) => x.json())
-          updates[it.card.id] = regionFromMuniCd(r?.muniCd)
+          const p = prefFromMuniCd(r?.muniCd)
+          if (p) updates[it.card.id] = p
         } catch {
-          updates[it.card.id] = "その他"
+          /* 失敗は無視（その他扱い） */
         }
       }
       if (!cancelled && Object.keys(updates).length) setRegionByCard((prev) => ({ ...prev, ...updates }))
@@ -204,24 +208,27 @@ export function TimelineView({ board }: TimelineViewProps) {
     }
   }, [timelineItems])
 
-  // エリア（地方）ごとのフィルタ用の一覧と件数
+  // エリア（都道府県）ごとのフィルタ用の一覧と件数（カード＋自社店舗）
   const areaOptions = useMemo(() => {
-    const order = ["北海道", "東北", "関東", "中部", "近畿", "中国", "四国", "九州", "その他"]
     const counts = new Map<string, number>()
     timelineItems.forEach((item) => {
-      const r = regionOfCard(item.card)
-      counts.set(r, (counts.get(r) || 0) + 1)
+      const p = prefOfCard(item.card)
+      counts.set(p ?? "その他", (counts.get(p ?? "その他") || 0) + 1)
     })
-    const present = Array.from(counts.keys())
-    present.sort((a, b) => order.indexOf(a) - order.indexOf(b))
-    return present.map((name) => ({ name, count: counts.get(name) || 0 }))
-  }, [timelineItems, regionByCard])
+    stores.forEach((s) => {
+      const p = prefOfStore(s)
+      counts.set(p ?? "その他", (counts.get(p ?? "その他") || 0) + 1)
+    })
+    return Array.from(counts.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => (a.name === "その他" ? 1 : b.name === "その他" ? -1 : b.count - a.count))
+  }, [timelineItems, regionByCard, stores])
 
   const filteredItems = useMemo(() => {
     return timelineItems.filter(
       (item) =>
         (yomiFilter === "all" || item.listTitle === yomiFilter) &&
-        (areaFilter === "all" || regionOfCard(item.card) === areaFilter),
+        (areaFilter === "all" || (prefOfCard(item.card) ?? "その他") === areaFilter),
     )
   }, [timelineItems, yomiFilter, areaFilter, regionByCard])
 
@@ -245,7 +252,7 @@ export function TimelineView({ board }: TimelineViewProps) {
     })
     // 既存の自社店舗（OPEN済み）を加算。エリア絞り込みは尊重する。
     stores.forEach((s) => {
-      if (areaFilter !== "all" && regionOf(s.prefecture) !== areaFilter) return
+      if (areaFilter !== "all" && (prefOfStore(s) ?? "その他") !== areaFilter) return
       const od = s.open_date ? new Date(s.open_date) : null
       if (!od || od <= mEnd) open++
     })

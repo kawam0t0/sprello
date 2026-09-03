@@ -195,21 +195,6 @@ export function ProjectForm({ open, onOpenChange, onSubmit, initial, submitting 
           <section className="space-y-3">
             <h3 className="text-sm font-semibold text-gray-800 border-b pb-1">評価・分析指標</h3>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <div>
-                <Label className="text-xs text-gray-600">ランク</Label>
-                <Select value={v.rank ?? ""} onValueChange={(val) => set({ rank: val })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="S" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {RANK_OPTIONS.map((r) => (
-                      <SelectItem key={r} value={r}>
-                        {r}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
               <TextField
                 label="日中12時間交通量"
                 type="number"
@@ -229,37 +214,11 @@ export function ProjectForm({ open, onOpenChange, onSubmit, initial, submitting 
                 onChange={(s) => set({ passing_speed: num(s) })}
               />
               <TextField
-                label="認知度"
-                type="number"
-                value={v.awareness?.toString() ?? ""}
-                onChange={(s) => set({ awareness: num(s) })}
-              />
-              <TextField
                 label="世帯年収（万円）"
                 type="number"
                 value={v.household_income?.toString() ?? ""}
                 onChange={(s) => set({ household_income: num(s) })}
               />
-              <div className="flex items-center gap-2 pt-5">
-                <Switch
-                  checked={!!v.corner_lot}
-                  onCheckedChange={(c) => set({ corner_lot: c })}
-                  id="corner"
-                />
-                <Label htmlFor="corner" className="text-xs text-gray-600">
-                  角地
-                </Label>
-              </div>
-              <div className="flex items-center gap-2 pt-5">
-                <Switch
-                  checked={!!v.visibility}
-                  onCheckedChange={(c) => set({ visibility: c })}
-                  id="vis"
-                />
-                <Label htmlFor="vis" className="text-xs text-gray-600">
-                  視認性
-                </Label>
-              </div>
             </div>
           </section>
 
@@ -272,18 +231,6 @@ export function ProjectForm({ open, onOpenChange, onSubmit, initial, submitting 
                 type="number"
                 value={v.size_tsubo?.toString() ?? ""}
                 onChange={(s) => set({ size_tsubo: num(s) })}
-              />
-              <TextField
-                label="何台並べるか"
-                type="number"
-                value={v.car_capacity?.toString() ?? ""}
-                onChange={(s) => set({ car_capacity: num(s) })}
-              />
-              <TextField
-                label="拭上げスペース数"
-                type="number"
-                value={v.wipe_spaces?.toString() ?? ""}
-                onChange={(s) => set({ wipe_spaces: num(s) })}
               />
             </div>
           </section>

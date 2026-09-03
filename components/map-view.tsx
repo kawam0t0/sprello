@@ -3,10 +3,10 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { X, Pencil, Menu } from "lucide-react"
 import { APIProvider, Map, useMap } from "@vis.gl/react-google-maps"
-import { CATEGORY_COLORS, PROJECT_CATEGORIES, STAGES, STAGE_COLORS, normalizeCategory, normalizeStage } from "@/types/database"
+import { CATEGORY_COLORS, PROJECT_CATEGORIES, STAGES, STAGE_COLORS, STAGE_PIN_LABEL, normalizeCategory, normalizeStage } from "@/types/database"
 import type { Card, MapItem, ProjectCategory, Store } from "@/types/database"
 import { BRAND_LOGOS } from "@/lib/brand-logos"
-import { getStores, updateStore, geocodeAddress, fetchTraffic } from "@/lib/database-operations"
+import { getStores, updateStore, geocodeAddress, fetchTraffic, fetchPopulation } from "@/lib/database-operations"
 import { resolveLatLngFromUrl } from "@/lib/maps-url"
 import { StoreForm } from "@/components/store-form"
 
@@ -82,10 +82,10 @@ function stageOf(item: MapItem): { label: string; color: string } {
   return { label, color: STAGE_COLORS[label] ?? "#6b7280" }
 }
 
-function storeToItem(s: Store): MapItem | null {
-  // 文字列で入っている場合も数値化。null/空/非数は座標なし扱い（住所からの補完対象）。
-  const lat = s.latitude == null ? NaN : Number(s.latitude)
-  const lng = s.longitude == null ? NaN : Number(s.longitude)
+function storeToItem(s: Store, pos?: { lat: number; lng: number }): MapItem | null {
+  // 住所からのジオコーディング結果(pos)があれば最優先。無ければ保存座標。
+  const lat = pos ? pos.lat : s.latitude == null ? NaN : Number(s.latitude)
+  const lng = pos ? pos.lng : s.longitude == null ? NaN : Number(s.longitude)
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
   return {
     id: `store-${s.id}`,
@@ -160,47 +160,42 @@ export function MapView({ cards }: MapViewProps) {
     refreshStores()
   }, [])
 
-  // 住所を「正」として座標を同期する（自己修復）。
-  // 住所がある店舗は毎セッション1回ジオコーディングし、
-  // 保存座標が無い/住所と大きくズレている場合は住所の座標で上書きする。
-  // （＝店舗一覧表の住所どおりの位置にピンを立てる）
+  // 店舗一覧表の「住所」を正としてピン位置を決める。
+  // 住所をジオコーディングした座標を storeGeo に保持し、表示・DB座標より優先する。
+  // （＝店舗一覧の住所どおりの位置にOPEN店舗のピンを立てる）
+  const [storeGeo, setStoreGeo] = useState<Record<string, { lat: number; lng: number }>>({})
+  const geoCacheRef = useRef<Record<string, { lat: number; lng: number } | null>>({})
   const geocodedRef = useRef<Set<string>>(new Set())
   useEffect(() => {
     const targets = stores.filter((s) => s.address && !geocodedRef.current.has(s.id))
     if (targets.length === 0) return
     let cancelled = false
-    // 2点間の距離(m)。約40m以上ズレていたら上書きする。
-    const distM = (aLat: number, aLng: number, bLat: number, bLng: number) => {
-      const R = 6371000,
-        toR = (d: number) => (d * Math.PI) / 180
-      const dLat = toR(bLat - aLat),
-        dLng = toR(bLng - aLng)
-      const x =
-        Math.sin(dLat / 2) ** 2 +
-        Math.cos(toR(aLat)) * Math.cos(toR(bLat)) * Math.sin(dLng / 2) ** 2
-      return 2 * R * Math.asin(Math.sqrt(x))
-    }
     ;(async () => {
-      let updated = false
+      const updates: Record<string, { lat: number; lng: number }> = {}
       for (const s of targets) {
         geocodedRef.current.add(s.id)
-        const geo = await geocodeAddress(s.address as string)
+        const addr = String(s.address)
+        let geo = geoCacheRef.current[addr]
+        if (geo === undefined) {
+          const g = await geocodeAddress(addr)
+          geo = g.lat != null && g.lng != null ? { lat: g.lat, lng: g.lng } : null
+          geoCacheRef.current[addr] = geo
+        }
         if (cancelled) return
-        if (geo.lat == null || geo.lng == null) continue
-        const curLat = s.latitude == null ? NaN : Number(s.latitude)
-        const curLng = s.longitude == null ? NaN : Number(s.longitude)
-        const hasCur = Number.isFinite(curLat) && Number.isFinite(curLng)
-        // 座標が無い、または住所の座標と40m以上ズレている場合のみ上書き
-        if (!hasCur || distM(curLat, curLng, geo.lat, geo.lng) > 40) {
-          try {
-            await updateStore(s.id, { latitude: geo.lat, longitude: geo.lng })
-            updated = true
-          } catch (e) {
-            console.warn("[map] 店舗座標の同期に失敗:", s.store_name, e)
-          }
+        if (geo) {
+          updates[s.id] = geo
+          // 保存座標と大きく違う場合はDBにも書き戻す（次回以降のため。失敗は無視）
+          const curLat = s.latitude == null ? NaN : Number(s.latitude)
+          const curLng = s.longitude == null ? NaN : Number(s.longitude)
+          const off =
+            !Number.isFinite(curLat) ||
+            !Number.isFinite(curLng) ||
+            Math.abs(curLat - geo.lat) > 0.0005 ||
+            Math.abs(curLng - geo.lng) > 0.0005
+          if (off) updateStore(s.id, { latitude: geo.lat, longitude: geo.lng }).catch(() => {})
         }
       }
-      if (!cancelled && updated) refreshStores()
+      if (!cancelled && Object.keys(updates).length) setStoreGeo((prev) => ({ ...prev, ...updates }))
     })()
     return () => {
       cancelled = true
@@ -242,7 +237,8 @@ export function MapView({ cards }: MapViewProps) {
   const [saving, setSaving] = useState(false)
 
   const allItems = useMemo(() => {
-    const s = stores.map(storeToItem).filter(Boolean) as MapItem[]
+    // 住所ジオコーディング結果(storeGeo)を優先してピン位置を決める
+    const s = stores.map((st) => storeToItem(st, storeGeo[st.id])).filter(Boolean) as MapItem[]
     // OPEN段階のプロジェクトは自社店舗(stores)へ同期済み（store_code=PJ-<cardId>）。
     // 二重ピンを避けるため、対応する店舗があるOPENプロジェクトは地図から除外。
     const storeCodes = new Set(stores.map((x) => x.store_code).filter(Boolean) as string[])
@@ -252,7 +248,7 @@ export function MapView({ cards }: MapViewProps) {
       return !storeCodes.has(`PJ-${cardId}`)
     })
     return [...s, ...p]
-  }, [stores, cards])
+  }, [stores, cards, storeGeo])
 
   const visibleItems = useMemo(
     () => allItems.filter((it) => visibleCats[it.category] && visibleStages[stageOf(it).label]),
@@ -802,7 +798,6 @@ function infoHtml(it: MapItem): string {
   const num = (v: number | null | undefined, unit = "") =>
     v == null ? "—" : Number(v).toLocaleString() + unit
   const rows: [string, string][] = [
-    ["ランク", it.rank || "—"],
     ["日中12h交通量", num(it.traffic_12h, " 台")],
     ["世帯年収", num(it.household_income, " 万円")],
     ["周辺充実度", it.surrounding_score == null ? "—" : String(it.surrounding_score)],
@@ -829,42 +824,46 @@ function infoHtml(it: MapItem): string {
   )
 }
 
+// シンプルなピン。OPEN=ブランドロゴのみ／それ以外=段階色の丸バッジ＋短い文字(A/B/C/工事/契)。
 function buildPin(
-  name: string,
-  brandColor: string,
-  stageLabel: string,
+  stageLabel: string, // "" ならOPEN扱い（ロゴのみ）
   stageColor: string,
   selected: boolean,
   logo: string,
 ): { url: string; w: number; h: number } {
-  const logoS = 22 // ブランドロゴ（左端）
-  const logoX = 6
-  const logoY = 4
-  const chipTextW = stageLabel.length * 11 + 12 // ステージ文字（OPEN/Aヨミ等）
-  const chipX = logoX + logoS + 6
-  const chipW = chipTextW
-  const nameX = chipX + chipW + 7
-  const nameW = Math.max(name.length * 13, 16)
-  const w = Math.ceil(nameX + nameW + 10)
-  const h = 40
-  const stroke = selected ? "#111827" : brandColor
-  const sw = selected ? 3 : 2
+  const sel = selected
+  if (!stageLabel) {
+    // OPEN: ロゴのみの角丸ピン
+    const S = 30
+    const w = 38,
+      h = 46
+    const x = (w - S) / 2
+    const stroke = sel ? "#111827" : "#16a34a"
+    const svg =
+      `<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' width='${w}' height='${h}' viewBox='0 0 ${w} ${h}'>` +
+      `<defs><clipPath id='lc'><rect x='${x}' y='4' width='${S}' height='${S}' rx='8'/></clipPath></defs>` +
+      `<rect x='${x}' y='4' width='${S}' height='${S}' rx='8' fill='white' stroke='${stroke}' stroke-width='${sel ? 3 : 2}'/>` +
+      `<image x='${x}' y='4' width='${S}' height='${S}' xlink:href='${logo}' clip-path='url(#lc)' preserveAspectRatio='xMidYMid meet'/>` +
+      `<path d='M ${w / 2 - 6},${4 + S - 1} L ${w / 2 + 6},${4 + S - 1} L ${w / 2},${4 + S + 8} Z' fill='white' stroke='${stroke}' stroke-width='${sel ? 3 : 2}'/>` +
+      `<path d='M ${w / 2 - 5},${4 + S} L ${w / 2 + 5},${4 + S} L ${w / 2},${4 + S + 7} Z' fill='white'/>` +
+      `</svg>`
+    return { url: "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg), w, h }
+  }
+  // それ以外: 段階色の丸/ピル + 白文字
+  const two = stageLabel.length >= 2
+  const bw = two ? 40 : 30
+  const bh = 28
+  const w = bw + 6
+  const h = bh + 12
   const cx = w / 2
+  const rx = bh / 2
+  const stroke = sel ? "#111827" : "#ffffff"
   const svg =
-    `<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink' width='${w}' height='${h}' viewBox='0 0 ${w} ${h}'>` +
-    `<defs><clipPath id='lc'><rect x='${logoX}' y='${logoY}' width='${logoS}' height='${logoS}' rx='5'/></clipPath></defs>` +
-    `<rect x='1.5' y='1.5' rx='14' ry='14' width='${w - 3}' height='28' fill='white' stroke='${stroke}' stroke-width='${sw}'/>` +
-    // ブランドロゴ
-    `<image x='${logoX}' y='${logoY}' width='${logoS}' height='${logoS}' xlink:href='${logo}' clip-path='url(#lc)' preserveAspectRatio='xMidYMid meet'/>` +
-    `<rect x='${logoX}' y='${logoY}' width='${logoS}' height='${logoS}' rx='5' fill='none' stroke='#e5e7eb' stroke-width='1'/>` +
-    // ステージチップ
-    `<rect x='${chipX}' y='5' rx='6' ry='6' width='${chipW}' height='19' fill='${stageColor}'/>` +
-    `<text x='${chipX + chipW / 2}' y='18.5' text-anchor='middle' font-family='sans-serif' font-size='11' font-weight='700' fill='white'>${escapeXml(stageLabel)}</text>` +
-    // 店名
-    `<text x='${nameX}' y='19' font-family='sans-serif' font-size='13' font-weight='700' fill='#1f2937'>${escapeXml(name)}</text>` +
-    // 吹き出し（ブランド色枠）
-    `<path d='M ${cx - 7},29 L ${cx + 7},29 L ${cx},39 Z' fill='white' stroke='${stroke}' stroke-width='${sw}'/>` +
-    `<path d='M ${cx - 6},30 L ${cx + 6},30 L ${cx},38 Z' fill='white'/>` +
+    `<svg xmlns='http://www.w3.org/2000/svg' width='${w}' height='${h}' viewBox='0 0 ${w} ${h}'>` +
+    `<rect x='${(w - bw) / 2}' y='3' width='${bw}' height='${bh}' rx='${rx}' ry='${rx}' fill='${stageColor}' stroke='${stroke}' stroke-width='${sel ? 3 : 2}'/>` +
+    `<text x='${cx}' y='${3 + bh / 2 + 4}' text-anchor='middle' font-family='sans-serif' font-size='${two ? 12 : 14}' font-weight='700' fill='white'>${escapeXml(stageLabel)}</text>` +
+    `<path d='M ${cx - 6},${3 + bh - 1} L ${cx + 6},${3 + bh - 1} L ${cx},${3 + bh + 8} Z' fill='${stageColor}' stroke='${stroke}' stroke-width='${sel ? 3 : 2}'/>` +
+    `<path d='M ${cx - 5},${3 + bh} L ${cx + 5},${3 + bh} L ${cx},${3 + bh + 7} Z' fill='${stageColor}'/>` +
     `</svg>`
   return { url: "data:image/svg+xml;charset=UTF-8," + encodeURIComponent(svg), w, h }
 }
@@ -893,10 +892,10 @@ function MapOverlays({
     const info = new google.maps.InfoWindow()
 
     items.forEach((it) => {
-      const color = CATEGORY_COLORS[it.category]
       const selected = selectedIds.includes(it.id)
       const st = stageOf(it)
-      const pin = buildPin(shortName(it.name), color, st.label, st.color, selected, BRAND_LOGOS[it.category])
+      const pinLabel = STAGE_PIN_LABEL[st.label] ?? ""
+      const pin = buildPin(pinLabel, st.color, selected, BRAND_LOGOS[it.category])
       const marker = new google.maps.Marker({
         position: { lat: it.lat, lng: it.lng },
         map,
@@ -1122,11 +1121,12 @@ function SpotInfoLayer({ enabled }: { enabled: boolean }) {
       info.setPosition({ lat, lng })
       info.open({ map })
 
-      const [t, m] = await Promise.all([
+      const [t, m, pop] = await Promise.all([
         fetchTraffic(lat, lng),
         fetch(`/api/revgeo?lat=${lat}&lng=${lng}`)
           .then((r) => r.json())
           .catch(() => null),
+        fetchPopulation(lat, lng).catch(() => null),
       ])
 
       const area = (m && (m.city || m.town)) || "この地点"
@@ -1138,13 +1138,19 @@ function SpotInfoLayer({ enabled }: { enabled: boolean }) {
         m && m.income_household != null
           ? `${Number(m.income_household).toLocaleString()} 万円 <span style="color:#888">（推計）</span>`
           : "データ未取得"
+      const popTxt = pop
+        ? [pop.pop_1km, pop.pop_2km, pop.pop_5km]
+            .map((v) => (v == null ? "—" : Number(v).toLocaleString()))
+            .join(" / ")
+        : "— / — / —"
 
       info.setContent(
-        `<div style="font-size:12px;line-height:1.7;min-width:210px;max-width:260px">` +
+        `<div style="font-size:12px;line-height:1.7;min-width:220px;max-width:270px">` +
           `<div style="font-weight:700;font-size:13px;color:#111">${escapeXml(String(area))} 付近</div>` +
           `<div style="margin-top:4px;display:flex;justify-content:space-between;gap:10px"><span style="color:#888">日中12h交通量${t && "found" in t && t.found && (t as any).vehicle ? "（" + (t as any).vehicle + "）" : ""}</span><span style="font-weight:600;color:#222">${traffic}</span></div>` +
           `<div style="display:flex;justify-content:space-between;gap:10px"><span style="color:#888">推計世帯年収</span><span style="font-weight:600;color:#222">${income}</span></div>` +
-          `<div style="color:#aaa;font-size:10px;margin-top:5px">概算（交通量=センサスR3／世帯年収=市区町村の課税所得からの推計）</div>` +
+          `<div style="display:flex;justify-content:space-between;gap:10px"><span style="color:#888">商圏人口 1/2/5km</span><span style="font-weight:600;color:#222">${popTxt}</span></div>` +
+          `<div style="color:#aaa;font-size:10px;margin-top:5px">概算（交通量=センサスR3／世帯年収=市区町村の課税所得からの推計／人口=国勢2020メッシュ）</div>` +
           `</div>`,
       )
     })
@@ -1478,7 +1484,6 @@ function MeasureLayer({
 const COMPARE_ROWS: { label: string; get: (it: MapItem) => string }[] = (() => {
   const fmt = (v: number | null | undefined) => (v == null ? "—" : Number(v).toLocaleString())
   const txt = (v: string | null | undefined) => (v == null || v === "" ? "—" : v)
-  const bool = (v: boolean | null | undefined) => (v == null ? "—" : v ? "○" : "×")
   return [
     { label: "区分", get: (it) => (it.kind === "store" ? "自社店舗" : "プロジェクト") },
     { label: "カテゴリ", get: (it) => txt(it.category) },
@@ -1490,17 +1495,11 @@ const COMPARE_ROWS: { label: string; get: (it: MapItem) => string }[] = (() => {
     { label: "住所", get: (it) => txt(it.address) },
     { label: "電話番号", get: (it) => txt(it.phone) },
     { label: "開店日", get: (it) => txt(it.open_date) },
-    { label: "ランク", get: (it) => txt(it.rank) },
     { label: "日中12時間交通量", get: (it) => fmt(it.traffic_12h) },
     { label: "周辺充実度", get: (it) => fmt(it.surrounding_score) },
     { label: "通過速度", get: (it) => fmt(it.passing_speed) },
-    { label: "角地", get: (it) => bool(it.corner_lot) },
-    { label: "視認性", get: (it) => bool(it.visibility) },
-    { label: "認知度", get: (it) => fmt(it.awareness) },
     { label: "世帯年収（万円）", get: (it) => fmt(it.household_income) },
     { label: "広さ（坪）", get: (it) => fmt(it.size_tsubo) },
-    { label: "何台並べるか", get: (it) => fmt(it.car_capacity) },
-    { label: "拭上げスペース数", get: (it) => fmt(it.wipe_spaces) },
     { label: "同心円1.0km人口", get: (it) => fmt(it.pop_1km) },
     { label: "同心円2.0km人口", get: (it) => fmt(it.pop_2km) },
     { label: "同心円5.0km人口", get: (it) => fmt(it.pop_5km) },

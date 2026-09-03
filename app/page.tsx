@@ -29,7 +29,7 @@ import { StoresView } from "@/components/stores-view"
 
 // Supabase関連のimport
 import { useBoardData } from "@/hooks/use-board-data"
-import { createCard, updateCard, deleteCard, moveCard, swapCards, getCardCount, createProject, geocodeAddress, upsertStoreFromCard, fetchPopulation, fetchSheetSpec, fetchTraffic } from "@/lib/database-operations"
+import { createCard, updateCard, deleteCard, moveCard, swapCards, getCardCount, createProject, geocodeAddress, upsertStoreFromCard, fetchPopulation, fetchSheetSpec, fetchTraffic, uploadDrawing } from "@/lib/database-operations"
 import { CATEGORY_COLORS, PROJECT_CATEGORIES, normalizeCategory } from "@/types/database"
 import { resolveLatLngFromUrl } from "@/lib/maps-url"
 import type { Card as CardType, ProjectCategory } from "@/types/database"
@@ -63,6 +63,7 @@ export default function Home() {
   const [fetchingCardPop, setFetchingCardPop] = useState(false)
   const [fetchingSpec, setFetchingSpec] = useState(false)
   const [fetchingTraffic, setFetchingTraffic] = useState(false)
+  const [uploadingDrawing, setUploadingDrawing] = useState(false)
 
   const [selectedCard, setSelectedCard] = useState<CardType | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -193,6 +194,7 @@ export default function Home() {
         company_name: updatedCard.company_name,
         company_url: updatedCard.company_url,
         spec_sheet_url: updatedCard.spec_sheet_url,
+        drawings: updatedCard.drawings ?? null,
         // ArmBox項目
         category: updatedCard.category,
         district: updatedCard.district,
@@ -447,19 +449,21 @@ export default function Home() {
               >
                 全て ({board.lists.reduce((n, l) => n + l.cards.length, 0)})
               </button>
-              {board.lists.map((list) => (
-                <button
-                  key={list.id}
-                  onClick={() => setYomiFilter(list.id)}
-                  className={`px-3 py-1.5 rounded-full text-sm border ${
-                    yomiFilter === list.id
-                      ? "bg-[#1b4da0] text-white border-[#1b4da0]"
-                      : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
-                  }`}
-                >
-                  {list.title} ({list.cards.length})
-                </button>
-              ))}
+              {board.lists
+                .filter((list) => !/設営|Dヨミ/.test(list.title))
+                .map((list) => (
+                  <button
+                    key={list.id}
+                    onClick={() => setYomiFilter(list.id)}
+                    className={`px-3 py-1.5 rounded-full text-sm border ${
+                      yomiFilter === list.id
+                        ? "bg-[#1b4da0] text-white border-[#1b4da0]"
+                        : "bg-white text-gray-600 border-gray-300 hover:bg-gray-50"
+                    }`}
+                  >
+                    {list.title} ({list.cards.length})
+                  </button>
+                ))}
             </div>
 
             {/* 追加順のカードグリッド */}
@@ -494,7 +498,10 @@ export default function Home() {
             <MapView cards={board.lists.flatMap((l) => l.cards.map((c) => ({ ...c, listTitle: l.title })))} />
           </div>
         ) : (
-          <StoresView />
+          <StoresView
+            cards={board.lists.flatMap((l) => l.cards.map((c) => ({ ...c, listTitle: l.title })))}
+            onRefetch={refetch}
+          />
         )}
       </div>
 
@@ -542,11 +549,13 @@ export default function Home() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {board.lists.map((l) => (
-                      <SelectItem key={l.id} value={l.id}>
-                        {l.title}
-                      </SelectItem>
-                    ))}
+                    {board.lists
+                      .filter((l) => !/設営|Dヨミ/.test(l.title))
+                      .map((l) => (
+                        <SelectItem key={l.id} value={l.id}>
+                          {l.title}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -670,13 +679,6 @@ export default function Home() {
                       </SelectContent>
                     </Select>
                   </div>
-                  <div>
-                    <Label className="text-xs text-gray-600">ランク</Label>
-                    <Input
-                      value={selectedCard.rank ?? ""}
-                      onChange={(e) => setSelectedCard({ ...selectedCard, rank: e.target.value })}
-                    />
-                  </div>
                   {/* 日中12時間交通量（道路交通センサスから最寄り区間を自動取得可） */}
                   <div className="col-span-2">
                     <Label className="text-xs text-gray-600">日中12時間交通量</Label>
@@ -738,11 +740,8 @@ export default function Home() {
                     [
                       ["周辺充実度", "surrounding_score"],
                       ["通過速度", "passing_speed"],
-                      ["認知度", "awareness"],
                       ["世帯年収（万円）", "household_income"],
                       ["広さ（坪）", "size_tsubo"],
-                      ["何台並べるか", "car_capacity"],
-                      ["拭上げスペース数", "wipe_spaces"],
                     ] as [string, keyof CardType][]
                   ).map(([label, key]) => (
                     <div key={key as string}>
@@ -759,20 +758,6 @@ export default function Home() {
                       />
                     </div>
                   ))}
-                  <div className="flex items-center gap-2 pt-5">
-                    <Switch
-                      checked={!!selectedCard.corner_lot}
-                      onCheckedChange={(c) => setSelectedCard({ ...selectedCard, corner_lot: c })}
-                    />
-                    <span className="text-xs text-gray-600">角地</span>
-                  </div>
-                  <div className="flex items-center gap-2 pt-5">
-                    <Switch
-                      checked={!!selectedCard.visibility}
-                      onCheckedChange={(c) => setSelectedCard({ ...selectedCard, visibility: c })}
-                    />
-                    <span className="text-xs text-gray-600">視認性</span>
-                  </div>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-gray-500">商圏人口（国勢2020・保存時に自動入力）</span>
@@ -955,6 +940,76 @@ export default function Home() {
                     </div>
                   )}
                 </div>
+              </div>
+
+              {/* 図面 */}
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold text-gray-800">図面</h3>
+                <div className="flex items-center gap-3">
+                  <label className="inline-flex items-center gap-2 px-3 py-2 rounded-md border border-gray-300 text-sm cursor-pointer hover:bg-gray-50">
+                    <Plus className="w-4 h-4" />
+                    図面を追加
+                    <input
+                      type="file"
+                      multiple
+                      accept="image/*,application/pdf"
+                      className="hidden"
+                      disabled={uploadingDrawing}
+                      onChange={async (e) => {
+                        const files = Array.from(e.target.files ?? [])
+                        e.target.value = ""
+                        if (!files.length || !selectedCard) return
+                        setUploadingDrawing(true)
+                        try {
+                          const uploaded: { name: string; url: string }[] = []
+                          for (const f of files) uploaded.push(await uploadDrawing(selectedCard.id, f))
+                          setSelectedCard({
+                            ...selectedCard,
+                            drawings: [...(selectedCard.drawings ?? []), ...uploaded],
+                          })
+                        } catch (err) {
+                          alert(
+                            "図面のアップロードに失敗しました: " +
+                              (err instanceof Error ? err.message : "不明なエラー") +
+                              "\n（Supabaseに drawings バケットが未作成の可能性があります）",
+                          )
+                        } finally {
+                          setUploadingDrawing(false)
+                        }
+                      }}
+                    />
+                  </label>
+                  {uploadingDrawing && <span className="text-sm text-gray-500">アップロード中…</span>}
+                  <span className="text-[11px] text-gray-400">画像・PDF対応。保存を押すと確定します</span>
+                </div>
+                {(selectedCard.drawings ?? []).length > 0 && (
+                  <ul className="space-y-1">
+                    {(selectedCard.drawings ?? []).map((d, i) => (
+                      <li key={i} className="flex items-center justify-between gap-2 text-sm border rounded px-2 py-1">
+                        <a
+                          href={d.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:underline truncate"
+                        >
+                          {d.name}
+                        </a>
+                        <button
+                          onClick={() =>
+                            setSelectedCard({
+                              ...selectedCard,
+                              drawings: (selectedCard.drawings ?? []).filter((_, j) => j !== i),
+                            })
+                          }
+                          className="text-gray-400 hover:text-red-600 flex-shrink-0"
+                          title="外す"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               {/* Action Buttons */}

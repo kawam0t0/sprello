@@ -7,34 +7,39 @@ export const PROJECT_CATEGORIES: ProjectCategory[] = [
   "丸紅-Splash",
 ]
 
-// 段階（ヨミ）＝ボードの列。8段階。並び順もこの順。
-export const STAGES = ["OPEN", "工事中", "設営中", "契約済", "Aヨミ", "Bヨミ", "Cヨミ", "Dヨミ"] as const
+// 段階（ヨミ）＝ボードの列。6段階。並び順もこの順。（設営中・Dヨミは廃止）
+export const STAGES = ["OPEN", "工事中", "契約済", "Aヨミ", "Bヨミ", "Cヨミ"] as const
 export type Stage = (typeof STAGES)[number]
 
-// 段階ごとの色（地図ピン・フィルタ・タイムライン共通）
+// 段階ごとの色・ピン表示ラベル（地図ピン・フィルタ・タイムライン共通）
 export const STAGE_COLORS: Record<string, string> = {
-  OPEN: "#16a34a",
-  工事中: "#0891b2",
-  設営中: "#7c3aed",
-  契約済: "#d97706",
-  Aヨミ: "#2563eb",
-  Bヨミ: "#0ea5e9",
-  Cヨミ: "#f59e0b",
-  Dヨミ: "#6b7280",
+  OPEN: "#16a34a", // 緑（ピンはロゴのみ）
+  工事中: "#dc2626", // 赤
+  契約済: "#7c3aed", // 紫
+  Aヨミ: "#2563eb", // 青
+  Bヨミ: "#38bdf8", // 水色
+  Cヨミ: "#eab308", // 黄
+}
+// ピンに出す短い表記（OPENはロゴのみなので空）
+export const STAGE_PIN_LABEL: Record<string, string> = {
+  OPEN: "",
+  工事中: "工事",
+  契約済: "契",
+  Aヨミ: "A",
+  Bヨミ: "B",
+  Cヨミ: "C",
 }
 
-// リスト名/旧ラベルを8段階のいずれかに正規化（完了→OPEN、未確定→Dヨミ 等）
+// リスト名/旧ラベルを6段階のいずれかに正規化（完了→OPEN、設営中→工事中、未確定/Dヨミ→Cヨミ）
 export function normalizeStage(title?: string | null): Stage {
   const t = title ?? ""
   if (t.includes("OPEN") || t.includes("完了") || t.includes("オープン")) return "OPEN"
-  if (t.includes("工事")) return "工事中"
-  if (t.includes("設営")) return "設営中"
+  if (t.includes("工事") || t.includes("設営")) return "工事中"
   if (t.includes("契約")) return "契約済"
   if (t.includes("Aヨミ")) return "Aヨミ"
   if (t.includes("Bヨミ")) return "Bヨミ"
-  if (t.includes("Cヨミ")) return "Cヨミ"
-  if (t.includes("Dヨミ") || t.includes("未確定")) return "Dヨミ"
-  return "Dヨミ"
+  if (t.includes("Cヨミ") || t.includes("Dヨミ") || t.includes("未確定")) return "Cヨミ"
+  return "Cヨミ"
 }
 
 // 都道府県 → エリア（地方区分）
@@ -58,6 +63,29 @@ export function regionOf(pref?: string | null): string {
 
 // 市区町村コード（JIS・先頭2桁=都道府県コード）→ エリア（地方）。
 // 座標→逆ジオコーダの muniCd から地方を判定するのに使う。
+// 市区町村コード（JIS・先頭2桁）→ 都道府県名（コア名）。エリア=都道府県単位のグルーピング用。
+const PREF_CODE_NAME: Record<number, string> = {
+  1: "北海道", 2: "青森", 3: "岩手", 4: "宮城", 5: "秋田", 6: "山形", 7: "福島",
+  8: "茨城", 9: "栃木", 10: "群馬", 11: "埼玉", 12: "千葉", 13: "東京", 14: "神奈川",
+  15: "新潟", 16: "富山", 17: "石川", 18: "福井", 19: "山梨", 20: "長野", 21: "岐阜", 22: "静岡", 23: "愛知",
+  24: "三重", 25: "滋賀", 26: "京都", 27: "大阪", 28: "兵庫", 29: "奈良", 30: "和歌山",
+  31: "鳥取", 32: "島根", 33: "岡山", 34: "広島", 35: "山口",
+  36: "徳島", 37: "香川", 38: "愛媛", 39: "高知",
+  40: "福岡", 41: "佐賀", 42: "長崎", 43: "熊本", 44: "大分", 45: "宮崎", 46: "鹿児島", 47: "沖縄",
+}
+export function prefFromMuniCd(muniCd?: string | null): string | null {
+  if (!muniCd) return null
+  const c = Number(String(muniCd).padStart(5, "0").slice(0, 2))
+  return PREF_CODE_NAME[c] ?? null
+}
+// 住所文字列の先頭から都道府県コア名を抽出（例:「群馬県太田市…」→「群馬」）
+export function prefFromAddress(addr?: string | null): string | null {
+  if (!addr) return null
+  const m = addr.trim().match(/^(北海道|東京都|(?:京都|大阪)府|.{2,3}県)/)
+  if (!m) return null
+  return m[1].replace(/[都道府県]$/, "")
+}
+
 export function regionFromMuniCd(muniCd?: string | null): string {
   if (!muniCd) return "その他"
   const c = Number(String(muniCd).padStart(5, "0").slice(0, 2))
@@ -178,6 +206,7 @@ export interface Card {
   trello_list_id?: string | null
   trello_card_id?: string | null
   spec_sheet_url?: string | null // 候補地スペック取込用スプレッドシートURL
+  drawings?: { name: string; url: string }[] | null // 図面ファイル（Supabase Storage）
 
   // --- ArmBox 出店プロジェクト項目（04-armbox-fields.sql で追加） ---
   category?: ProjectCategory | null // カテゴリ

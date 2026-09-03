@@ -164,6 +164,22 @@ export async function deleteStore(id: string): Promise<void> {
   if (error) throw error
 }
 
+// 図面ファイルを Supabase Storage(バケット drawings) にアップロードし公開URLを返す
+export async function uploadDrawing(
+  cardId: string,
+  file: File,
+): Promise<{ name: string; url: string }> {
+  const safe = file.name.replace(/[^\w.\-]+/g, "_")
+  const path = `${cardId}/${Date.now()}_${safe}`
+  const { error } = await supabase.storage.from("drawings").upload(path, file, {
+    upsert: false,
+    contentType: file.type || undefined,
+  })
+  if (error) throw error
+  const { data } = supabase.storage.from("drawings").getPublicUrl(path)
+  return { name: file.name, url: data.publicUrl }
+}
+
 async function createTrelloListForCard(projectName: string, cardData: any) {
   try {
     console.log("[v0] Creating Trello list for:", projectName)
