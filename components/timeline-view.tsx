@@ -477,7 +477,7 @@ export function TimelineView({ board }: TimelineViewProps) {
                       className="flex-1 text-center py-3 border-l border-teal-200 first:border-l-0 relative group cursor-default"
                     >
                       <div className="text-sm font-bold text-gray-700">{month.label}</div>
-                      <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 z-30 hidden group-hover:block bg-gray-800 text-white rounded-xl shadow-2xl p-4 text-left w-[300px] max-h-[70vh] overflow-y-auto">
+                      <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 z-30 hidden group-hover:block bg-gray-800 text-white rounded-xl shadow-2xl p-4 text-left w-[440px] max-h-[70vh] overflow-y-auto">
                         <div className="font-bold text-base mb-2 border-b border-white/20 pb-2">{month.label} 時点</div>
                         {(
                           [
@@ -493,8 +493,15 @@ export function TimelineView({ board }: TimelineViewProps) {
                               <span className="font-bold text-sm">{names.length} 店舗</span>
                             </div>
                             {names.length > 0 && (
-                              <div className="mt-1 text-[11px] leading-relaxed text-gray-200 break-words">
-                                {names.join("、")}
+                              <div className="mt-1.5 grid grid-cols-2 gap-x-4 gap-y-1 text-[11px] text-gray-100">
+                                {names.map((n, i) => (
+                                  <div key={i} className="flex items-start gap-1 min-w-0">
+                                    <span className="text-gray-400 flex-shrink-0">・</span>
+                                    <span className="truncate" title={n}>
+                                      {n}
+                                    </span>
+                                  </div>
+                                ))}
                               </div>
                             )}
                           </div>
