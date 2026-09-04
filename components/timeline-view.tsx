@@ -255,21 +255,41 @@ export function TimelineView({ board }: TimelineViewProps) {
   // 指定した年月時点での各段階の店舗（名前つき内訳）。月ヘッダーのホバーで表示。
   // OPEN には「既存の自社店舗（OPEN済み）」も加算（重複はPJ-連携店舗を除外）。
   const monthStats = (m: { year: number; month: number }) => {
-    const mStart = new Date(m.year, m.month, 1)
     const mEnd = new Date(m.year, m.month + 1, 0, 23, 59, 59)
-    const inter = (s: Date | null, e: Date | null) => !!s && !!e && s <= mEnd && e >= mStart
     const storeCodes = new Set(stores.map((s) => s.store_code).filter(Boolean) as string[])
     const open: string[] = [],
       koji: string[] = [],
       setup: string[] = [],
       follow: string[] = []
+    // 月末時点で「そのプロジェクトが今どの段階か」を1つだけ判定して振り分ける。
+    // 各段階は時間的に連続しているため、月境を跨ぐと従来は複数バケットに重複計上されていた。
+    // 優先度（新しい段階を優先）: OPENフォロー > OPEN > 設営 > 工事
     filteredItems.forEach((it) => {
+      // OPEN連携済みのカードは自社店舗側で計上するため、カード側では数えない（二重計上防止）
+      if (storeCodes.has(`PJ-${it.card.id}`)) return
       const nm = it.card.store_name || it.card.title
-      // OPEN連携済みのカードは自社店舗側で数えるため、ここでは除外（二重計上防止）
-      if (it.openDate && it.openDate <= mEnd && !storeCodes.has(`PJ-${it.card.id}`)) open.push(nm)
-      if (inter(it.startDate, it.startEndDate)) koji.push(nm)
-      if (inter(it.setupStartDate, it.setupEndDate)) setup.push(nm)
-      if (inter(it.openFollowStartDate, it.openFollowEndDate)) follow.push(nm)
+      if (
+        it.openFollowStartDate &&
+        it.openFollowEndDate &&
+        it.openFollowStartDate <= mEnd &&
+        mEnd <= it.openFollowEndDate
+      ) {
+        follow.push(nm)
+      } else if (it.openDate && it.openDate <= mEnd) {
+        open.push(nm)
+      } else if (
+        it.setupStartDate &&
+        it.setupStartDate <= mEnd &&
+        (!it.openDate || mEnd < it.openDate)
+      ) {
+        setup.push(nm)
+      } else if (
+        it.startDate &&
+        it.startDate <= mEnd &&
+        (!it.setupStartDate || mEnd < it.setupStartDate)
+      ) {
+        koji.push(nm)
+      }
     })
     // 既存の自社店舗（OPEN済み）を加算。エリア絞り込みは尊重する。
     stores.forEach((s) => {
