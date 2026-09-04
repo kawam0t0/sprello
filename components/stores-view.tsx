@@ -12,6 +12,7 @@ type Row = {
   key: string
   kind: "store" | "project"
   store?: Store
+  card?: Card & { listTitle?: string }
   cardId?: string
   code: string
   name: string
@@ -29,9 +30,11 @@ type Row = {
 export function StoresView({
   cards = [],
   onRefetch,
+  onEditCard,
 }: {
   cards?: (Card & { listTitle?: string })[]
   onRefetch?: () => void
+  onEditCard?: (card: Card & { listTitle?: string }) => void
 }) {
   const [stores, setStores] = useState<Store[]>([])
   const [loading, setLoading] = useState(true)
@@ -71,6 +74,7 @@ export function StoresView({
       .map((c) => ({
         key: `card-${c.id}`,
         kind: "project",
+        card: c,
         cardId: c.id,
         code: c.property_no ?? "",
         name: c.store_name || c.title,
@@ -196,6 +200,12 @@ export function StoresView({
                       <div className="flex items-center gap-1.5">
                         {r.kind === "store" && r.store && (
                           <Button size="sm" variant="outline" onClick={() => setEdit(r.store!)}>
+                            <Pencil className="w-3.5 h-3.5 mr-1" />
+                            編集
+                          </Button>
+                        )}
+                        {r.kind === "project" && r.card && onEditCard && (
+                          <Button size="sm" variant="outline" onClick={() => onEditCard(r.card!)}>
                             <Pencil className="w-3.5 h-3.5 mr-1" />
                             編集
                           </Button>

@@ -252,29 +252,30 @@ export function TimelineView({ board }: TimelineViewProps) {
     )
   }, [timelineItems, yomiFilter, areaFilter, regionByCard])
 
-  // 指定した年月時点での各段階の店舗数（月ヘッダーのホバーで表示）
-  // OPEN数には「既存の自社店舗（OPEN済み）」も加算する（重複はPJ-連携店舗を除外）。
+  // 指定した年月時点での各段階の店舗（名前つき内訳）。月ヘッダーのホバーで表示。
+  // OPEN には「既存の自社店舗（OPEN済み）」も加算（重複はPJ-連携店舗を除外）。
   const monthStats = (m: { year: number; month: number }) => {
     const mStart = new Date(m.year, m.month, 1)
     const mEnd = new Date(m.year, m.month + 1, 0, 23, 59, 59)
     const inter = (s: Date | null, e: Date | null) => !!s && !!e && s <= mEnd && e >= mStart
     const storeCodes = new Set(stores.map((s) => s.store_code).filter(Boolean) as string[])
-    let open = 0,
-      koji = 0,
-      setup = 0,
-      follow = 0
+    const open: string[] = [],
+      koji: string[] = [],
+      setup: string[] = [],
+      follow: string[] = []
     filteredItems.forEach((it) => {
+      const nm = it.card.store_name || it.card.title
       // OPEN連携済みのカードは自社店舗側で数えるため、ここでは除外（二重計上防止）
-      if (it.openDate && it.openDate <= mEnd && !storeCodes.has(`PJ-${it.card.id}`)) open++
-      if (inter(it.startDate, it.startEndDate)) koji++
-      if (inter(it.setupStartDate, it.setupEndDate)) setup++
-      if (inter(it.openFollowStartDate, it.openFollowEndDate)) follow++
+      if (it.openDate && it.openDate <= mEnd && !storeCodes.has(`PJ-${it.card.id}`)) open.push(nm)
+      if (inter(it.startDate, it.startEndDate)) koji.push(nm)
+      if (inter(it.setupStartDate, it.setupEndDate)) setup.push(nm)
+      if (inter(it.openFollowStartDate, it.openFollowEndDate)) follow.push(nm)
     })
     // 既存の自社店舗（OPEN済み）を加算。エリア絞り込みは尊重する。
     stores.forEach((s) => {
       if (areaFilter !== "all" && areaOfStore(s) !== areaFilter) return
       const od = s.open_date ? new Date(s.open_date) : null
-      if (!od || od <= mEnd) open++
+      if (!od || od <= mEnd) open.push(s.store_name)
     })
     return { open, koji, setup, follow }
   }
@@ -476,24 +477,28 @@ export function TimelineView({ board }: TimelineViewProps) {
                       className="flex-1 text-center py-3 border-l border-teal-200 first:border-l-0 relative group cursor-default"
                     >
                       <div className="text-sm font-bold text-gray-700">{month.label}</div>
-                      <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 z-30 hidden group-hover:block bg-gray-800 text-white text-[11px] rounded-lg shadow-xl px-3 py-2 whitespace-nowrap text-left">
-                        <div className="font-bold mb-1 border-b border-white/20 pb-1">{month.label} 時点</div>
-                        <div className="flex items-center justify-between gap-4">
-                          <span className="text-green-300">OPEN</span>
-                          <span className="font-bold">{st.open} 店舗</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-4">
-                          <span className="text-cyan-300">工事中</span>
-                          <span className="font-bold">{st.koji} 店舗</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-4">
-                          <span className="text-blue-300">設営中</span>
-                          <span className="font-bold">{st.setup} 店舗</span>
-                        </div>
-                        <div className="flex items-center justify-between gap-4">
-                          <span className="text-purple-300">OPENフォロー中</span>
-                          <span className="font-bold">{st.follow} 店舗</span>
-                        </div>
+                      <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 z-30 hidden group-hover:block bg-gray-800 text-white rounded-xl shadow-2xl p-4 text-left w-[300px] max-h-[70vh] overflow-y-auto">
+                        <div className="font-bold text-base mb-2 border-b border-white/20 pb-2">{month.label} 時点</div>
+                        {(
+                          [
+                            ["OPEN", "text-green-300", "bg-green-400/15", st.open],
+                            ["工事中", "text-cyan-300", "bg-cyan-400/15", st.koji],
+                            ["設営中", "text-blue-300", "bg-blue-400/15", st.setup],
+                            ["OPENフォロー中", "text-purple-300", "bg-purple-400/15", st.follow],
+                          ] as [string, string, string, string[]][]
+                        ).map(([label, color, bg, names]) => (
+                          <div key={label} className={`mb-2 rounded-lg px-2.5 py-2 ${bg}`}>
+                            <div className="flex items-center justify-between">
+                              <span className={`font-semibold ${color}`}>{label}</span>
+                              <span className="font-bold text-sm">{names.length} 店舗</span>
+                            </div>
+                            {names.length > 0 && (
+                              <div className="mt-1 text-[11px] leading-relaxed text-gray-200 break-words">
+                                {names.join("、")}
+                              </div>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )

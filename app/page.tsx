@@ -501,6 +501,7 @@ export default function Home() {
           <StoresView
             cards={board.lists.flatMap((l) => l.cards.map((c) => ({ ...c, listTitle: l.title })))}
             onRefetch={refetch}
+            onEditCard={handleCardDoubleClick}
           />
         )}
       </div>
