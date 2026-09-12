@@ -1,0 +1,125 @@
+// PJT進捗のTODO初期テンプレート（契約済以降に実施する項目）
+// 各プロジェクトを初めて開いたとき、このテンプレートを「独立したコピー」として
+// そのプロジェクト専用に複製する（チェック状態はプロジェクトごとに独立）。
+
+// 担当プルダウンの選択肢（デフォルト）
+export const PJT_ASSIGNEES = ["岡村", "ラメザニ", "霜田", "大野", "小川", "河本"] as const
+
+export type TodoSeed = {
+  title: string
+  assignee?: string
+  memo?: string
+  children?: TodoSeed[]
+}
+
+export const PJT_TODO_TEMPLATE: TodoSeed[] = [
+  {
+    title: "OPEN日を決める",
+    assignee: "岡村",
+    children: [
+      { title: "OPEN看板の設置" },
+      { title: "電光掲示板の設置" },
+      { title: "infomation/マップのアップ(ホームページ)" },
+      { title: "LPの作成" },
+      { title: "店舗ポスターの作成/設置" },
+      { title: "トレーラー納品日決定" },
+    ],
+  },
+  {
+    title: "キャンペーン&プロモーションを決める",
+    assignee: "岡村",
+    children: [
+      {
+        title: "キャンペーン",
+        children: [
+          { title: "キャンペーン内容の決定" },
+          { title: "キャンペーンの社内スケジュール確認" },
+        ],
+      },
+      {
+        title: "プロモーション",
+        children: [
+          { title: "インスタ開設" },
+          { title: "インスタ広告" },
+          { title: "インフルエンサーの選定" },
+          { title: "インフルエンサーとの打合せ" },
+          { title: "インフルエンサーの撮影" },
+        ],
+      },
+      { title: "PRTimes" },
+      { title: "チラシデザイン/部数の決定/発注" },
+      { title: "地元メディア掲載" },
+      { title: "群ラボ" },
+    ],
+  },
+  {
+    title: "システムを整える",
+    assignee: "河本",
+    children: [
+      { title: "Googleアカウントの開設" },
+      { title: "DialPadの契約　申請/発番" },
+      { title: "Squareアカウント(開設/商品登録)" },
+      { title: "Squareキャッシュレス申請" },
+      { title: "GoogleMap　申請/開設" },
+      { title: "Airshift" },
+      { title: "備品購入　PC/GL-Net/ラベルプリンター/ライブカメラ/ラベルプリンター予備/LANケーブル/Squareターミナル系" },
+      { title: "光回線の契約(光回線工事日)" },
+      { title: "インフラ開発(スプレッド/chat/oneapp/kawazon/MF請求書)" },
+      { title: "かんら富岡現場使用フォーム(来店動機など)" },
+    ],
+  },
+  {
+    title: "研修を決める",
+    children: [
+      { title: "研修の日程の決定" },
+      { title: "社員採用？バイト運営？" },
+    ],
+  },
+  {
+    title: "採用を決める",
+    children: [
+      { title: "採用ページに掲載する取材対応" },
+      { title: "indeed採用ページ" },
+      { title: "面接" },
+      { title: "採用" },
+      { title: "OJT" },
+    ],
+  },
+  {
+    title: "店舗運営備品を買う",
+    children: [
+      {
+        title: "ハイロック販促物",
+        children: [
+          { title: "タオル用パネル" },
+          { title: "出口信号用パネル" },
+          { title: "マットクリーナー用ステッカー" },
+          { title: "マットクリーナー用ロゴステッカー" },
+          { title: "上記4件送料" },
+          { title: "利用規約" },
+          { title: "洗車パス" },
+          { title: "料金看板" },
+          { title: "利用規約看板" },
+          { title: "コース用ステッカー" },
+          { title: "アパレル" },
+          { title: "チラシ" },
+          { title: "のぼり&ポール、中水台" },
+          { title: "IN看板" },
+          { title: "スタッフルーム カッティングシート" },
+        ],
+      },
+      {
+        title: "リアル販促物",
+        memo: "https://docs.google.com/spreadsheets/d/1Axw-xl56HQuPugajb4F3sNAN6htw7PinSxVvCpACmZA/edit?usp=sharing",
+      },
+    ],
+  },
+  {
+    title: "スタッフを管理する",
+    children: [
+      { title: "スタッフOJT" },
+      { title: "Airshift(スタッフ登録)" },
+      { title: "シフトボードインストール" },
+    ],
+  },
+]

@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useState } from "react"
-import { Plus, MoreHorizontal, X, Edit, Calendar, Trash2, ExternalLink, LayoutList, CalendarDays, MapIcon, MapPin } from 'lucide-react'
+import { Plus, MoreHorizontal, X, Edit, Calendar, Trash2, ExternalLink, LayoutList, CalendarDays, MapIcon, MapPin, ListChecks } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
@@ -26,6 +26,7 @@ import { MapView } from "@/components/map-view"
 import { ProjectForm, type ProjectFormValues } from "@/components/project-form"
 import { ProjectCard } from "@/components/project-card"
 import { StoresView } from "@/components/stores-view"
+import { PjtProgressView } from "@/components/pjt-progress-view"
 
 // Supabase関連のimport
 import { useBoardData } from "@/hooks/use-board-data"
@@ -52,7 +53,7 @@ export default function Home() {
   // Supabaseからデータを取得
   const { board, loading, error, refetch } = useBoardData()
 
-  const [viewMode, setViewMode] = useState<"board" | "timeline" | "map" | "stores">("board")
+  const [viewMode, setViewMode] = useState<"pjt" | "board" | "timeline" | "map" | "stores">("board")
 
   // ボードのヨミ絞り込み（"all" or list.id）
   const [yomiFilter, setYomiFilter] = useState<string>("all")
@@ -385,6 +386,15 @@ export default function Home() {
             </div>
             <div className="flex items-center gap-2">
               <Button
+                variant={viewMode === "pjt" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("pjt")}
+                className={viewMode === "pjt" ? "bg-[#163f85] hover:bg-[#10305f]" : "hover:bg-[#163f85]"}
+              >
+                <ListChecks className="w-4 h-4 mr-2" />
+                PJT進捗
+              </Button>
+              <Button
                 variant={viewMode === "board" ? "secondary" : "ghost"}
                 size="sm"
                 onClick={() => setViewMode("board")}
@@ -497,11 +507,15 @@ export default function Home() {
           <div className="bg-white" style={{ height: "calc(100vh - 72px)" }}>
             <MapView cards={board.lists.flatMap((l) => l.cards.map((c) => ({ ...c, listTitle: l.title })))} />
           </div>
-        ) : (
+        ) : viewMode === "stores" ? (
           <StoresView
             cards={board.lists.flatMap((l) => l.cards.map((c) => ({ ...c, listTitle: l.title })))}
             onRefetch={refetch}
             onEditCard={handleCardDoubleClick}
+          />
+        ) : (
+          <PjtProgressView
+            cards={board.lists.flatMap((l) => l.cards.map((c) => ({ ...c, listTitle: l.title })))}
           />
         )}
       </div>
