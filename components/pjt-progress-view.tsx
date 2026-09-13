@@ -20,10 +20,11 @@ import { STAGE_COLORS, normalizeStage } from "@/types/database"
 import type { Card } from "@/types/database"
 import {
   getProjectTodos,
-  seedProjectTodos,
+  ensureProjectTodos,
   addTodo,
   updateTodo,
   setCheckedMany,
+  setAssigneeMany,
   deleteTodo,
   type ProjectTodo,
 } from "@/lib/pjt-todo-operations"
@@ -167,10 +168,7 @@ function TodoPanel({ cardId, name, stage }: { cardId: string; name: string; stag
     setLoading(true)
     setErr(null)
     try {
-      let rows = await getProjectTodos(cardId)
-      if (rows.length === 0) {
-        rows = await seedProjectTodos(cardId)
-      }
+      const rows = await ensureProjectTodos(cardId)
       setTodos(rows)
       // 大項目は初期展開
       const exp: Record<string, boolean> = {}
@@ -283,10 +281,19 @@ function TodoPanel({ cardId, name, stage }: { cardId: string; name: string; stag
     }
   }
 
+  // 担当を変更したら、その配下（中項目・小項目）も同じ担当に揃える
   const onEditAssignee = async (id: string, assignee: string | null) => {
-    setTodos((prev) => prev.map((x) => (x.id === id ? { ...x, assignee } : x)))
+    const childMap: Record<string, ProjectTodo[]> = {}
+    for (const t of todos) (childMap[t.parent_id ?? "root"] ||= []).push(t)
+    const ids: string[] = []
+    const collect = (nid: string) => {
+      ids.push(nid)
+      for (const c of childMap[nid] ?? []) collect(c.id)
+    }
+    collect(id)
+    setTodos((prev) => prev.map((x) => (ids.includes(x.id) ? { ...x, assignee } : x)))
     try {
-      await updateTodo(id, { assignee })
+      await setAssigneeMany(ids, assignee)
     } catch {
       load()
     }
@@ -411,7 +418,7 @@ function TodoPanel({ cardId, name, stage }: { cardId: string; name: string; stag
         {addingParent === "root" ? (
           <AddRow
             depth={0}
-            placeholder="大項目を追加"
+            placeholder="大項目名を入力"
             value={addingText}
             onChange={setAddingText}
             onSubmit={() => onAdd(null, 1)}
@@ -426,7 +433,7 @@ function TodoPanel({ cardId, name, stage }: { cardId: string; name: string; stag
               setAddingParent("root")
               setAddingText("")
             }}
-            className="mt-2 flex items-center gap-1 text-sm text-[#1b4da0] hover:underline"
+            className="mt-3 flex items-center justify-center gap-1.5 text-sm font-medium text-[#1b4da0] hover:bg-blue-50 rounded-lg px-3 py-2 border border-dashed border-[#1b4da0]/50 w-full"
           >
             <Plus className="w-4 h-4" /> 大項目を追加
           </button>
@@ -484,6 +491,7 @@ function TodoNode({
 }) {
   const children = kids[node.id] ?? []
   const hasChildren = children.length > 0
+  const canHaveChildren = node.level < 3 // 大・中は子を持てる
   const isOpen = expanded[node.id] ?? false
   const stats = leafStats(node.id)
   const state: "checked" | "partial" | "unchecked" =
@@ -512,8 +520,8 @@ function TodoNode({
         className={`group flex items-center gap-2 rounded-lg border border-gray-100 px-2 py-1.5 hover:border-[#1b4da0]/30 hover:bg-blue-50/40 ${rowBg}`}
         style={{ marginLeft: depth * 22 }}
       >
-        {/* 開閉 */}
-        {hasChildren ? (
+        {/* 開閉（大・中は子を持てるので常に表示） */}
+        {canHaveChildren ? (
           <button
             onClick={() => setExpanded((e) => ({ ...e, [node.id]: !isOpen }))}
             className="text-gray-400 hover:text-gray-700 flex-shrink-0"
@@ -557,33 +565,23 @@ function TodoNode({
         {/* 担当プルダウン */}
         <AssigneeSelect value={node.assignee} onChange={(a) => onEditAssignee(node.id, a)} />
 
-        {/* 行アクション（ホバーで表示） */}
-        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+        {/* 行アクション */}
+        <div className="flex items-center gap-1 flex-shrink-0">
           <button
             onClick={() => setMemoOpen((m) => ({ ...m, [node.id]: !m[node.id] }))}
-            className={`p-1 rounded hover:bg-gray-100 ${
-              node.memo ? "text-amber-500" : "text-gray-400"
+            className={`flex items-center gap-1 px-1.5 py-1 rounded text-xs border transition-colors ${
+              node.memo
+                ? "text-amber-700 border-amber-300 bg-amber-50"
+                : "text-gray-400 border-transparent hover:border-gray-200 hover:bg-gray-100"
             }`}
-            title="メモ"
+            title={node.memo ? "メモを見る/編集" : "メモを追加"}
           >
-            <StickyNote className="w-4 h-4" />
+            <StickyNote className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">{node.memo ? "メモ" : "メモ"}</span>
           </button>
-          {node.level < 3 && (
-            <button
-              onClick={() => {
-                setExpanded((e) => ({ ...e, [node.id]: true }))
-                setAddingParent(node.id)
-                setAddingText("")
-              }}
-              className="p-1 rounded hover:bg-gray-100 text-gray-400 hover:text-[#1b4da0]"
-              title={`${LEVEL_LABEL[node.level + 1]}を追加`}
-            >
-              <Plus className="w-4 h-4" />
-            </button>
-          )}
           <button
             onClick={() => setConfirmDel(node.id)}
-            className="p-1 rounded hover:bg-red-50 text-gray-400 hover:text-red-600"
+            className="p-1 rounded text-gray-300 hover:bg-red-50 hover:text-red-600 opacity-0 group-hover:opacity-100 transition-opacity"
             title="削除"
           >
             <Trash2 className="w-4 h-4" />
@@ -607,22 +605,52 @@ function TodoNode({
         </div>
       )}
 
-      {/* メモ欄 */}
-      {memoOpen[node.id] && (
-        <div className="my-1" style={{ marginLeft: depth * 22 + 24 }}>
+      {/* メモ：編集中はテキストエリア、そうでなければ内容を常時表示（Trello風） */}
+      {memoOpen[node.id] ? (
+        <div className="my-1" style={{ marginLeft: depth * 22 + 46 }}>
           <Textarea
             value={memoDraft}
             onChange={(e) => setMemoDraft(e.target.value)}
-            onBlur={() => onEditMemo(node.id, memoDraft)}
+            onBlur={() => {
+              onEditMemo(node.id, memoDraft)
+              setMemoOpen((m) => ({ ...m, [node.id]: false }))
+            }}
+            autoFocus
             placeholder="メモを入力（自動保存）"
             rows={2}
-            className="text-sm"
+            className="text-sm bg-amber-50 border-amber-200"
           />
+          <div className="mt-1 flex justify-end">
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 px-2 text-xs"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                onEditMemo(node.id, memoDraft)
+                setMemoOpen((m) => ({ ...m, [node.id]: false }))
+              }}
+            >
+              保存して閉じる
+            </Button>
+          </div>
         </div>
+      ) : (
+        node.memo && (
+          <button
+            onClick={() => setMemoOpen((m) => ({ ...m, [node.id]: true }))}
+            className="my-1 flex items-start gap-1.5 text-left text-xs text-amber-800 bg-amber-50 border-l-2 border-amber-300 rounded px-2 py-1.5 hover:bg-amber-100 w-fit max-w-2xl"
+            style={{ marginLeft: depth * 22 + 46 }}
+            title="クリックで編集"
+          >
+            <StickyNote className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-amber-500" />
+            <span className="whitespace-pre-wrap break-words">{node.memo}</span>
+          </button>
+        )
       )}
 
-      {/* 子 */}
-      {hasChildren && isOpen && (
+      {/* 子＋追加行（大・中は子を持てる。開いているときに表示） */}
+      {canHaveChildren && isOpen && (
         <div className="mt-1 space-y-1">
           {children.map((c) => (
             <TodoNode
@@ -650,22 +678,31 @@ function TodoNode({
               onDelete={onDelete}
             />
           ))}
+          {addingParent === node.id ? (
+            <AddRow
+              depth={depth + 1}
+              placeholder={`${LEVEL_LABEL[node.level + 1]}名を入力`}
+              value={addingText}
+              onChange={setAddingText}
+              onSubmit={() => onAdd(node.id, node.level + 1)}
+              onCancel={() => {
+                setAddingParent(null)
+                setAddingText("")
+              }}
+            />
+          ) : (
+            <button
+              onClick={() => {
+                setAddingParent(node.id)
+                setAddingText("")
+              }}
+              className="flex items-center gap-1 text-xs text-[#1b4da0] hover:bg-blue-50 rounded px-2 py-1 border border-dashed border-[#1b4da0]/40"
+              style={{ marginLeft: (depth + 1) * 22 + 24 }}
+            >
+              <Plus className="w-3.5 h-3.5" /> {LEVEL_LABEL[node.level + 1]}を追加
+            </button>
+          )}
         </div>
-      )}
-
-      {/* 子の追加入力 */}
-      {addingParent === node.id && (
-        <AddRow
-          depth={depth + 1}
-          placeholder={`${LEVEL_LABEL[node.level + 1]}を追加`}
-          value={addingText}
-          onChange={setAddingText}
-          onSubmit={() => onAdd(node.id, node.level + 1)}
-          onCancel={() => {
-            setAddingParent(null)
-            setAddingText("")
-          }}
-        />
       )}
     </div>
   )

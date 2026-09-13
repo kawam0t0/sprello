@@ -31,13 +31,16 @@ export async function getProjectTodos(cardId: string): Promise<ProjectTodo[]> {
 }
 
 // テンプレートを指定プロジェクトへ複製（親→子の順にINSERTして parent_id を解決）
+// 担当は大項目に設定された既定値を、中項目・小項目へそのまま継承する。
 export async function seedProjectTodos(cardId: string): Promise<ProjectTodo[]> {
   const insertNode = async (
     node: TodoSeed,
     level: number,
     parentId: string | null,
     position: number,
+    inheritedAssignee: string | null,
   ): Promise<void> => {
+    const assignee = node.assignee ?? inheritedAssignee ?? null
     const { data, error } = await supabase
       .from("project_todos")
       .insert({
@@ -45,7 +48,7 @@ export async function seedProjectTodos(cardId: string): Promise<ProjectTodo[]> {
         parent_id: parentId,
         level,
         title: node.title,
-        assignee: node.assignee ?? null,
+        assignee,
         memo: node.memo ?? "",
         position,
         checked: false,
@@ -58,16 +61,29 @@ export async function seedProjectTodos(cardId: string): Promise<ProjectTodo[]> {
       // 子はまとめて順番に（親IDが必要なので直列）
       let i = 0
       for (const child of node.children) {
-        await insertNode(child, level + 1, id, i++)
+        await insertNode(child, level + 1, id, i++, assignee)
       }
     }
   }
 
   let i = 0
   for (const top of PJT_TODO_TEMPLATE) {
-    await insertNode(top, 1, null, i++)
+    await insertNode(top, 1, null, i++, null)
   }
   return getProjectTodos(cardId)
+}
+
+// 二重シード防止：同じプロジェクトへの同時シードを直列化する（開発時の StrictMode で
+// useEffect が2回走っても、TODOが二重に作られないようにする）。
+const seedInFlight = new Map<string, Promise<ProjectTodo[]>>()
+export async function ensureProjectTodos(cardId: string): Promise<ProjectTodo[]> {
+  const rows = await getProjectTodos(cardId)
+  if (rows.length > 0) return rows
+  const running = seedInFlight.get(cardId)
+  if (running) return running
+  const p = seedProjectTodos(cardId).finally(() => seedInFlight.delete(cardId))
+  seedInFlight.set(cardId, p)
+  return p
 }
 
 // 1件追加
@@ -115,6 +131,16 @@ export async function setCheckedMany(ids: string[], checked: boolean): Promise<v
   const { error } = await supabase
     .from("project_todos")
     .update({ checked, updated_at: new Date().toISOString() })
+    .in("id", ids)
+  if (error) throw error
+}
+
+// 複数件の担当を一括更新（親の担当を子孫へ揃える用）
+export async function setAssigneeMany(ids: string[], assignee: string | null): Promise<void> {
+  if (ids.length === 0) return
+  const { error } = await supabase
+    .from("project_todos")
+    .update({ assignee, updated_at: new Date().toISOString() })
     .in("id", ids)
   if (error) throw error
 }
