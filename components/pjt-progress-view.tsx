@@ -30,6 +30,18 @@ import {
 } from "@/lib/pjt-todo-operations"
 import { PJT_ASSIGNEES } from "@/lib/pjt-todo-template"
 
+// 大項目別バーの色（見分け用・順番に循環）
+const MAJOR_COLORS = [
+  "#2563eb",
+  "#0891b2",
+  "#16a34a",
+  "#d97706",
+  "#7c3aed",
+  "#db2777",
+  "#0d9488",
+  "#dc2626",
+]
+
 // このビューに出す対象段階（契約済以降）
 const TARGET_STAGES = ["契約済", "工事中", "OPEN"] as const
 const STAGE_ORDER: Record<string, number> = { 契約済: 0, 工事中: 1, OPEN: 2 }
@@ -227,6 +239,16 @@ function TodoPanel({ cardId, name, stage }: { cardId: string; name: string; stag
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todos, kids])
 
+  // 大項目別の進捗（各大項目の配下リーフ単位で集計）
+  const byMajor = useMemo(() => {
+    return (kids["root"] ?? []).map((r) => ({
+      id: r.id,
+      title: r.title,
+      ...leafStats(r.id),
+    }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todos, kids])
+
   // チェック切替：対象と子孫を value に、その後すべての親を「子が全部チェックか」で再計算
   const toggleCheck = async (id: string, value: boolean) => {
     const next = todos.map((t) => ({ ...t }))
@@ -379,6 +401,32 @@ function TodoPanel({ cardId, name, stage }: { cardId: string; name: string; stag
             {overall.done}/{overall.total}（{pct}%）
           </span>
         </div>
+
+        {/* 大項目別の進捗 */}
+        {byMajor.length > 0 && (
+          <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3">
+            <div className="text-xs font-semibold text-gray-500 mb-2">大項目別の進捗</div>
+            <div className="grid grid-cols-1 gap-y-2">
+              {byMajor.map((m, i) => {
+                const p = m.total ? Math.round((m.done / m.total) * 100) : 0
+                const color = MAJOR_COLORS[i % MAJOR_COLORS.length]
+                return (
+                  <div key={m.id} className="flex items-center gap-2">
+                    <span className="w-48 flex-shrink-0 text-xs text-gray-700 truncate" title={m.title}>
+                      {m.title}
+                    </span>
+                    <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full transition-all" style={{ width: `${p}%`, backgroundColor: color }} />
+                    </div>
+                    <span className="w-16 flex-shrink-0 text-right text-[11px] text-gray-500 tabular-nums">
+                      {m.done}/{m.total}（{p}%）
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       {err && (
