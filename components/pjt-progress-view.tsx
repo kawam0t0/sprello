@@ -182,10 +182,7 @@ function TodoPanel({ cardId, name, stage }: { cardId: string; name: string; stag
     try {
       const rows = await ensureProjectTodos(cardId)
       setTodos(rows)
-      // 大項目は初期展開
-      const exp: Record<string, boolean> = {}
-      rows.filter((r) => r.level === 1).forEach((r) => (exp[r.id] = true))
-      setExpanded((prev) => ({ ...exp, ...prev }))
+      // デフォルトは大項目だけ表示（すべて畳んだ状態）。開きたい項目は各chevron／「全て開閉」で。
     } catch (e) {
       setErr(
         (e instanceof Error ? e.message : "読み込みに失敗しました") +
