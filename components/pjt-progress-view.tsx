@@ -368,7 +368,7 @@ function TodoPanel({ cardId, name, stage }: { cardId: string; name: string; stag
   const pct = overall.total ? Math.round((overall.done / overall.total) * 100) : 0
 
   return (
-    <div className="p-5 max-w-4xl mx-auto">
+    <div className="p-5 max-w-[1500px] mx-auto">
       {/* ヘッダー */}
       <div className="mb-4">
         <div className="flex items-center gap-2 mb-2">
@@ -406,13 +406,13 @@ function TodoPanel({ cardId, name, stage }: { cardId: string; name: string; stag
         {byMajor.length > 0 && (
           <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3">
             <div className="text-xs font-semibold text-gray-500 mb-2">大項目別の進捗</div>
-            <div className="grid grid-cols-1 gap-y-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2">
               {byMajor.map((m, i) => {
                 const p = m.total ? Math.round((m.done / m.total) * 100) : 0
                 const color = MAJOR_COLORS[i % MAJOR_COLORS.length]
                 return (
                   <div key={m.id} className="flex items-center gap-2">
-                    <span className="w-48 flex-shrink-0 text-xs text-gray-700 truncate" title={m.title}>
+                    <span className="w-40 flex-shrink-0 text-xs text-gray-700 truncate" title={m.title}>
                       {m.title}
                     </span>
                     <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
@@ -433,60 +433,65 @@ function TodoPanel({ cardId, name, stage }: { cardId: string; name: string; stag
         <div className="mb-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded p-3">{err}</div>
       )}
 
-      {/* ツリー */}
-      <div className="space-y-1">
+      {/* ツリー：大項目をカードにして複数列（画面幅に応じて 2〜3 列）で並べる。
+          縦スクロールを大幅に短縮。各カードは列内で分割されない。 */}
+      <div className="gap-4 [column-fill:_balance] columns-1 lg:columns-2 2xl:columns-3">
         {(kids["root"] ?? []).map((node) => (
-          <TodoNode
+          <div
             key={node.id}
-            node={node}
-            kids={kids}
-            expanded={expanded}
-            setExpanded={setExpanded}
-            memoOpen={memoOpen}
-            setMemoOpen={setMemoOpen}
-            editingId={editingId}
-            setEditingId={setEditingId}
-            onEditTitle={onEditTitle}
-            onEditAssignee={onEditAssignee}
-            onEditMemo={onEditMemo}
-            toggleCheck={toggleCheck}
-            leafStats={leafStats}
-            addingParent={addingParent}
-            setAddingParent={setAddingParent}
-            addingText={addingText}
-            setAddingText={setAddingText}
-            onAdd={onAdd}
-            confirmDel={confirmDel}
-            setConfirmDel={setConfirmDel}
-            onDelete={onDelete}
-          />
-        ))}
-
-        {/* 大項目を追加 */}
-        {addingParent === "root" ? (
-          <AddRow
-            depth={0}
-            placeholder="大項目名を入力"
-            value={addingText}
-            onChange={setAddingText}
-            onSubmit={() => onAdd(null, 1)}
-            onCancel={() => {
-              setAddingParent(null)
-              setAddingText("")
-            }}
-          />
-        ) : (
-          <button
-            onClick={() => {
-              setAddingParent("root")
-              setAddingText("")
-            }}
-            className="mt-3 flex items-center justify-center gap-1.5 text-sm font-medium text-[#1b4da0] hover:bg-blue-50 rounded-lg px-3 py-2 border border-dashed border-[#1b4da0]/50 w-full"
+            className="break-inside-avoid mb-4 rounded-xl border border-gray-200 bg-white p-2 shadow-sm"
           >
-            <Plus className="w-4 h-4" /> 大項目を追加
-          </button>
-        )}
+            <TodoNode
+              node={node}
+              kids={kids}
+              expanded={expanded}
+              setExpanded={setExpanded}
+              memoOpen={memoOpen}
+              setMemoOpen={setMemoOpen}
+              editingId={editingId}
+              setEditingId={setEditingId}
+              onEditTitle={onEditTitle}
+              onEditAssignee={onEditAssignee}
+              onEditMemo={onEditMemo}
+              toggleCheck={toggleCheck}
+              leafStats={leafStats}
+              addingParent={addingParent}
+              setAddingParent={setAddingParent}
+              addingText={addingText}
+              setAddingText={setAddingText}
+              onAdd={onAdd}
+              confirmDel={confirmDel}
+              setConfirmDel={setConfirmDel}
+              onDelete={onDelete}
+            />
+          </div>
+        ))}
       </div>
+
+      {/* 大項目を追加 */}
+      {addingParent === "root" ? (
+        <AddRow
+          depth={0}
+          placeholder="大項目名を入力"
+          value={addingText}
+          onChange={setAddingText}
+          onSubmit={() => onAdd(null, 1)}
+          onCancel={() => {
+            setAddingParent(null)
+            setAddingText("")
+          }}
+        />
+      ) : (
+        <button
+          onClick={() => {
+            setAddingParent("root")
+            setAddingText("")
+          }}
+          className="mt-2 flex items-center justify-center gap-1.5 text-sm font-medium text-[#1b4da0] hover:bg-blue-50 rounded-lg px-3 py-2 border border-dashed border-[#1b4da0]/50 w-full"
+        >
+          <Plus className="w-4 h-4" /> 大項目を追加
+        </button>
+      )}
     </div>
   )
 }
@@ -550,8 +555,7 @@ function TodoNode({
         : "unchecked"
 
   const depth = node.level - 1
-  const rowBg =
-    node.level === 1 ? "bg-white shadow-sm" : node.level === 2 ? "bg-white" : "bg-transparent"
+  const rowBg = node.level === 1 ? "bg-[#1b4da0]/5" : "bg-transparent"
   const titleCls =
     node.level === 1
       ? "font-bold text-gray-900"
@@ -565,8 +569,8 @@ function TodoNode({
   return (
     <div>
       <div
-        className={`group flex items-center gap-2 rounded-lg border border-gray-100 px-2 py-1.5 hover:border-[#1b4da0]/30 hover:bg-blue-50/40 ${rowBg}`}
-        style={{ marginLeft: depth * 22 }}
+        className={`group flex items-center gap-1.5 rounded-md px-2 py-1.5 hover:bg-blue-50/70 ${rowBg}`}
+        style={{ marginLeft: depth * 16 }}
       >
         {/* 開閉（大・中は子を持てるので常に表示） */}
         {canHaveChildren ? (
@@ -617,7 +621,7 @@ function TodoNode({
         <div className="flex items-center gap-1 flex-shrink-0">
           <button
             onClick={() => setMemoOpen((m) => ({ ...m, [node.id]: !m[node.id] }))}
-            className={`flex items-center gap-1 px-1.5 py-1 rounded text-xs border transition-colors ${
+            className={`flex items-center justify-center w-7 h-7 rounded border transition-colors ${
               node.memo
                 ? "text-amber-700 border-amber-300 bg-amber-50"
                 : "text-gray-400 border-transparent hover:border-gray-200 hover:bg-gray-100"
@@ -625,7 +629,6 @@ function TodoNode({
             title={node.memo ? "メモを見る/編集" : "メモを追加"}
           >
             <StickyNote className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">{node.memo ? "メモ" : "メモ"}</span>
           </button>
           <button
             onClick={() => setConfirmDel(node.id)}
@@ -641,7 +644,7 @@ function TodoNode({
       {confirmDel === node.id && (
         <div
           className="flex items-center gap-2 text-xs text-gray-600 bg-red-50 border border-red-200 rounded px-3 py-1.5 my-1"
-          style={{ marginLeft: depth * 22 + 24 }}
+          style={{ marginLeft: depth * 16 + 22 }}
         >
           <span>「{node.title}」{hasChildren ? "と配下の項目" : ""}を削除しますか？</span>
           <Button size="sm" variant="destructive" className="h-6 px-2" onClick={() => onDelete(node.id)}>
@@ -655,7 +658,7 @@ function TodoNode({
 
       {/* メモ：編集中はテキストエリア、そうでなければ内容を常時表示（Trello風） */}
       {memoOpen[node.id] ? (
-        <div className="my-1" style={{ marginLeft: depth * 22 + 46 }}>
+        <div className="my-1" style={{ marginLeft: depth * 16 + 40 }}>
           <Textarea
             value={memoDraft}
             onChange={(e) => setMemoDraft(e.target.value)}
@@ -688,7 +691,7 @@ function TodoNode({
           <button
             onClick={() => setMemoOpen((m) => ({ ...m, [node.id]: true }))}
             className="my-1 flex items-start gap-1.5 text-left text-xs text-amber-800 bg-amber-50 border-l-2 border-amber-300 rounded px-2 py-1.5 hover:bg-amber-100 w-fit max-w-2xl"
-            style={{ marginLeft: depth * 22 + 46 }}
+            style={{ marginLeft: depth * 16 + 40 }}
             title="クリックで編集"
           >
             <StickyNote className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-amber-500" />
@@ -745,7 +748,7 @@ function TodoNode({
                 setAddingText("")
               }}
               className="flex items-center gap-1 text-xs text-[#1b4da0] hover:bg-blue-50 rounded px-2 py-1 border border-dashed border-[#1b4da0]/40"
-              style={{ marginLeft: (depth + 1) * 22 + 24 }}
+              style={{ marginLeft: (depth + 1) * 16 + 22 }}
             >
               <Plus className="w-3.5 h-3.5" /> {LEVEL_LABEL[node.level + 1]}を追加
             </button>
@@ -795,7 +798,7 @@ function AssigneeSelect({
       value={value ?? ""}
       onChange={(e) => onChange(e.target.value === "" ? null : e.target.value)}
       onClick={(e) => e.stopPropagation()}
-      className={`h-7 rounded border text-xs px-1.5 flex-shrink-0 w-[88px] bg-white ${
+      className={`h-7 rounded border text-xs px-1 flex-shrink-0 w-[72px] bg-white ${
         value ? "border-[#1b4da0]/40 text-gray-800" : "border-gray-200 text-gray-400"
       }`}
       title="担当"
@@ -862,7 +865,7 @@ function AddRow({
     ref.current?.focus()
   }, [])
   return (
-    <div className="flex items-center gap-2 my-1" style={{ marginLeft: depth * 22 + 24 }}>
+    <div className="flex items-center gap-2 my-1" style={{ marginLeft: depth * 16 + 22 }}>
       <Input
         ref={ref}
         value={value}
