@@ -56,16 +56,56 @@ export const PJT_TODO_TEMPLATE: TodoSeed[] = [
     title: "システムを整える",
     assignee: "河本",
     children: [
-      { title: "Googleアカウントの開設" },
-      { title: "DialPadの契約　申請/発番" },
-      { title: "Squareアカウント(開設/商品登録)" },
-      { title: "Squareキャッシュレス申請" },
-      { title: "GoogleMap　申請/開設" },
-      { title: "Airshift" },
-      { title: "備品購入　PC/GL-Net/ラベルプリンター/ライブカメラ/ラベルプリンター予備/LANケーブル/Squareターミナル系" },
-      { title: "光回線の契約(光回線工事日)" },
-      { title: "インフラ開発(スプレッド/chat/oneapp/kawazon/MF請求書)" },
-      { title: "かんら富岡現場使用フォーム(来店動機など)" },
+      {
+        title: "Googleアカウント",
+        children: [{ title: "Googleアカウント開設" }, { title: "Googleアカウント共有" }],
+      },
+      {
+        title: "DialPad",
+        children: [{ title: "申請" }, { title: "発番" }],
+      },
+      {
+        title: "Squareアカウント",
+        children: [
+          { title: "開設" },
+          { title: "商品登録" },
+          { title: "キャッシュレス申請" },
+          { title: "ターミナル周辺機器購入" },
+        ],
+      },
+      {
+        title: "GoogleMap",
+        children: [{ title: "申請" }, { title: "開設" }, { title: "設定" }],
+      },
+      {
+        title: "Airshift",
+        children: [{ title: "アカウント開設" }],
+      },
+      {
+        title: "備品購入",
+        children: [
+          { title: "店舗PC" },
+          { title: "GL-Net" },
+          { title: "ラベルプリンター" },
+          { title: "ライブカメラ" },
+          { title: "LANケーブル" },
+        ],
+      },
+      {
+        title: "光回線の契約",
+        children: [{ title: "申請" }, { title: "工事日決定" }, { title: "開通" }],
+      },
+      {
+        title: "店舗インフラ開発",
+        children: [
+          { title: "店舗スプレッドシート" },
+          { title: "Googlechat開設/通知" },
+          { title: "ONEAPP(店舗情報)" },
+          { title: "Kawazon(店舗情報)" },
+          { title: "MF請求書店舗追加" },
+        ],
+      },
+      { title: "店舗聞き取りForm" },
     ],
   },
   {
