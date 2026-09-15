@@ -45,7 +45,8 @@ export function TimelineView({ board }: TimelineViewProps) {
   } | null>(null)
   const [newDate, setNewDate] = useState("")
   const [isUpdating, setIsUpdating] = useState(false)
-  const [yomiFilter, setYomiFilter] = useState<string>("all")
+  // ヨミ絞り込みは複数選択可。空配列＝全て表示。
+  const [yomiFilter, setYomiFilter] = useState<string[]>([])
   const [areaFilter, setAreaFilter] = useState<string>("all")
   // 既存の自社店舗（OPEN済み）。月ポップアップのOPEN数に加算する。
   const [stores, setStores] = useState<Store[]>([])
@@ -247,7 +248,7 @@ export function TimelineView({ board }: TimelineViewProps) {
   const filteredItems = useMemo(() => {
     return timelineItems.filter(
       (item) =>
-        (yomiFilter === "all" || item.listTitle === yomiFilter) &&
+        (yomiFilter.length === 0 || yomiFilter.includes(item.listTitle)) &&
         (areaFilter === "all" || areaOfCard(item.card) === areaFilter),
     )
   }, [timelineItems, yomiFilter, areaFilter, regionByCard])
@@ -432,8 +433,8 @@ export function TimelineView({ board }: TimelineViewProps) {
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm font-bold text-gray-700 mr-1">ヨミで絞り込み:</span>
             <button
-              onClick={() => setYomiFilter("all")}
-              className={`text-sm px-3 py-1.5 rounded-full font-medium transition-colors ${getYomiButtonClass("__all__", yomiFilter === "all")}`}
+              onClick={() => setYomiFilter([])}
+              className={`text-sm px-3 py-1.5 rounded-full font-medium transition-colors ${getYomiButtonClass("__all__", yomiFilter.length === 0)}`}
             >
               全て
               <span className="ml-1 text-xs opacity-80">({timelineItems.length})</span>
@@ -441,8 +442,14 @@ export function TimelineView({ board }: TimelineViewProps) {
             {yomiOptions.map((opt) => (
               <button
                 key={opt.title}
-                onClick={() => setYomiFilter(opt.title)}
-                className={`text-sm px-3 py-1.5 rounded-full font-medium transition-colors ${getYomiButtonClass(opt.title, yomiFilter === opt.title)}`}
+                onClick={() =>
+                  setYomiFilter((prev) =>
+                    prev.includes(opt.title)
+                      ? prev.filter((t) => t !== opt.title)
+                      : [...prev, opt.title],
+                  )
+                }
+                className={`text-sm px-3 py-1.5 rounded-full font-medium transition-colors ${getYomiButtonClass(opt.title, yomiFilter.includes(opt.title))}`}
               >
                 {opt.title}
                 <span className="ml-1 text-xs opacity-80">({opt.count})</span>
@@ -536,7 +543,9 @@ export function TimelineView({ board }: TimelineViewProps) {
 
           {filteredItems.length === 0 ? (
             <div className="flex items-center justify-center h-32 text-gray-500 border border-dashed border-gray-300 rounded-lg">
-              <p className="text-sm">「{yomiFilter}」のプロジェクトはありません</p>
+              <p className="text-sm">
+                {yomiFilter.length > 0 ? `「${yomiFilter.join("・")}」の` : ""}プロジェクトはありません
+              </p>
             </div>
           ) : (
           <div className="space-y-4">
