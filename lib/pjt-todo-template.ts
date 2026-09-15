@@ -103,6 +103,8 @@ export const PJT_TODO_TEMPLATE: TodoSeed[] = [
           { title: "ONEAPP(店舗情報)" },
           { title: "Kawazon(店舗情報)" },
           { title: "MF請求書店舗追加" },
+          { title: "ラベルプリント印刷(入会/ONEAPP)" },
+          { title: "ライブ配信カメラ(GL-Net接続)" },
         ],
       },
       { title: "店舗聞き取りForm" },
