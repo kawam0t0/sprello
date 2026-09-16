@@ -30,6 +30,16 @@ import {
 } from "@/lib/pjt-todo-operations"
 import { PJT_ASSIGNEES } from "@/lib/pjt-todo-template"
 
+// 担当者別バーの色（見分け用）
+const ASSIGNEE_COLORS: Record<string, string> = {
+  岡村: "#2563eb",
+  ラメザニ: "#0891b2",
+  霜田: "#16a34a",
+  大野: "#d97706",
+  小川: "#7c3aed",
+  河本: "#db2777",
+}
+
 // 大項目別バーの色（見分け用・順番に循環）
 const MAJOR_COLORS = [
   "#2563eb",
@@ -246,6 +256,34 @@ function TodoPanel({ cardId, name, stage }: { cardId: string; name: string; stag
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todos, kids])
 
+  // 担当者別の進捗（末端項目＝リーフ単位。担当が振られているものだけ集計。未割当は除外）
+  const byAssignee = useMemo(() => {
+    const map: Record<string, { done: number; total: number }> = {}
+    const walk = (id: string) => {
+      const children = kids[id] ?? []
+      if (children.length === 0) {
+        const n = todos.find((t) => t.id === id)
+        if (n?.assignee) {
+          const m = (map[n.assignee] ||= { done: 0, total: 0 })
+          m.total++
+          if (n.checked) m.done++
+        }
+        return
+      }
+      children.forEach((c) => walk(c.id))
+    }
+    ;(kids["root"] ?? []).forEach((r) => walk(r.id))
+    const order = [...PJT_ASSIGNEES]
+    return Object.keys(map)
+      .sort((a, b) => {
+        const ai = order.indexOf(a as (typeof PJT_ASSIGNEES)[number])
+        const bi = order.indexOf(b as (typeof PJT_ASSIGNEES)[number])
+        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi)
+      })
+      .map((k) => ({ key: k, ...map[k] }))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [todos, kids])
+
   // チェック切替：対象と子孫を value に、その後すべての親を「子が全部チェックか」で再計算
   const toggleCheck = async (id: string, value: boolean) => {
     const next = todos.map((t) => ({ ...t }))
@@ -417,6 +455,32 @@ function TodoPanel({ cardId, name, stage }: { cardId: string; name: string; stag
                     </div>
                     <span className="w-16 flex-shrink-0 text-right text-[11px] text-gray-500 tabular-nums">
                       {m.done}/{m.total}（{p}%）
+                    </span>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* 担当者別の進捗（担当が振られているタスクのみ） */}
+        {byAssignee.length > 0 && (
+          <div className="mt-3 rounded-lg border border-gray-200 bg-white p-3">
+            <div className="text-xs font-semibold text-gray-500 mb-2">担当者別の進捗</div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2">
+              {byAssignee.map((a) => {
+                const p = a.total ? Math.round((a.done / a.total) * 100) : 0
+                const color = ASSIGNEE_COLORS[a.key] ?? "#1b4da0"
+                return (
+                  <div key={a.key} className="flex items-center gap-2">
+                    <span className="w-16 flex-shrink-0 text-xs text-gray-700 truncate" title={a.key}>
+                      {a.key}
+                    </span>
+                    <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div className="h-full transition-all" style={{ width: `${p}%`, backgroundColor: color }} />
+                    </div>
+                    <span className="w-16 flex-shrink-0 text-right text-[11px] text-gray-500 tabular-nums">
+                      {a.done}/{a.total}（{p}%）
                     </span>
                   </div>
                 )
