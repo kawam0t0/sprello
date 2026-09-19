@@ -20,7 +20,7 @@ import { STAGE_COLORS, normalizeStage } from "@/types/database"
 import type { Card } from "@/types/database"
 import {
   getProjectTodos,
-  ensureProjectTodos,
+  loadProjectTodos,
   addTodo,
   updateTodo,
   setCheckedMany,
@@ -190,7 +190,7 @@ function TodoPanel({ cardId, name, stage }: { cardId: string; name: string; stag
     setLoading(true)
     setErr(null)
     try {
-      const rows = await ensureProjectTodos(cardId)
+      const rows = await loadProjectTodos(cardId)
       setTodos(rows)
       // デフォルトは大項目だけ表示（すべて畳んだ状態）。開きたい項目は各chevron／「全て開閉」で。
     } catch (e) {
@@ -257,22 +257,25 @@ function TodoPanel({ cardId, name, stage }: { cardId: string; name: string; stag
   }, [todos, kids])
 
   // 担当者別の進捗（末端項目＝リーフ単位。担当が振られているものだけ集計。未割当は除外）
+  // 親に担当が付いていれば配下のリーフはその担当として数える（＝画面表示どおりに動的集計）。
   const byAssignee = useMemo(() => {
     const map: Record<string, { done: number; total: number }> = {}
-    const walk = (id: string) => {
+    const byIdLocal = new Map(todos.map((t) => [t.id, t]))
+    const walk = (id: string, inherited: string | null) => {
+      const n = byIdLocal.get(id)
+      const eff = n?.assignee ?? inherited
       const children = kids[id] ?? []
       if (children.length === 0) {
-        const n = todos.find((t) => t.id === id)
-        if (n?.assignee) {
-          const m = (map[n.assignee] ||= { done: 0, total: 0 })
+        if (eff) {
+          const m = (map[eff] ||= { done: 0, total: 0 })
           m.total++
-          if (n.checked) m.done++
+          if (n?.checked) m.done++
         }
         return
       }
-      children.forEach((c) => walk(c.id))
+      children.forEach((c) => walk(c.id, eff))
     }
-    ;(kids["root"] ?? []).forEach((r) => walk(r.id))
+    ;(kids["root"] ?? []).forEach((r) => walk(r.id, null))
     const order = [...PJT_ASSIGNEES]
     return Object.keys(map)
       .sort((a, b) => {

@@ -86,6 +86,66 @@ export async function ensureProjectTodos(cardId: string): Promise<ProjectTodo[]>
   return p
 }
 
+// テンプレートに増えた項目だけを既存プロジェクトへ「追加」する（非破壊）。
+// 既存の行・チェック・担当・メモ・ユーザーが自分で足した項目は一切消さない。
+// タイトルの一致（同じ親の下で同名か）で既存かどうかを判定する。
+async function syncProjectTodos(cardId: string): Promise<ProjectTodo[]> {
+  const rows = await getProjectTodos(cardId)
+  const childrenByParent: Record<string, ProjectTodo[]> = {}
+  for (const r of rows) (childrenByParent[r.parent_id ?? "root"] ||= []).push(r)
+  let changed = false
+
+  const ensureNode = async (
+    node: TodoSeed,
+    level: number,
+    parentId: string | null,
+    parentKey: string,
+    inheritedAssignee: string | null,
+  ): Promise<void> => {
+    const assignee = node.assignee ?? inheritedAssignee ?? null
+    const siblings = childrenByParent[parentKey] ?? []
+    let existing = siblings.find((s) => s.title === node.title)
+    if (!existing) {
+      const position = siblings.length ? Math.max(...siblings.map((s) => s.position)) + 1 : 0
+      existing = await addTodo({
+        card_id: cardId,
+        parent_id: parentId,
+        level,
+        title: node.title,
+        position,
+        assignee,
+      })
+      if (node.memo) await updateTodo(existing.id, { memo: node.memo })
+      ;(childrenByParent[parentKey] ||= []).push(existing)
+      changed = true
+    }
+    if (node.children?.length) {
+      for (const child of node.children) {
+        await ensureNode(child, level + 1, existing.id, existing.id, assignee)
+      }
+    }
+  }
+
+  for (const top of PJT_TODO_TEMPLATE) {
+    await ensureNode(top, 1, null, "root", null)
+  }
+  return changed ? getProjectTodos(cardId) : rows
+}
+
+// 読み込み用：空ならシード、既存ならテンプレの不足分だけ追加（いずれも非破壊）。
+// StrictMode等での二重実行を直列化して重複追加を防ぐ。
+const loadInFlight = new Map<string, Promise<ProjectTodo[]>>()
+export async function loadProjectTodos(cardId: string): Promise<ProjectTodo[]> {
+  const running = loadInFlight.get(cardId)
+  if (running) return running
+  const p = (async () => {
+    await ensureProjectTodos(cardId)
+    return syncProjectTodos(cardId)
+  })().finally(() => loadInFlight.delete(cardId))
+  loadInFlight.set(cardId, p)
+  return p
+}
+
 // 1件追加
 export async function addTodo(input: {
   card_id: string
