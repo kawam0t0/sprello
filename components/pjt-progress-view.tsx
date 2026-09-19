@@ -29,6 +29,13 @@ import {
   type ProjectTodo,
 } from "@/lib/pjt-todo-operations"
 import { PJT_ASSIGNEES } from "@/lib/pjt-todo-template"
+import { SuppliesDialog } from "@/components/supplies-dialog"
+
+// メモ内のスプレッドシートURLを取り出す（あれば備品リストを開けるようにする）
+const sheetUrlOf = (memo: string): string | null => {
+  const m = (memo || "").match(/https?:\/\/docs\.google\.com\/spreadsheets\/[^\s]+/)
+  return m ? m[0] : null
+}
 
 // 担当者別バーの色（見分け用）
 const ASSIGNEE_COLORS: Record<string, string> = {
@@ -185,6 +192,7 @@ function TodoPanel({ cardId, name, stage }: { cardId: string; name: string; stag
   const [addingParent, setAddingParent] = useState<string | null>(null) // parent id or "root"
   const [addingText, setAddingText] = useState("")
   const [confirmDel, setConfirmDel] = useState<string | null>(null)
+  const [suppliesUrl, setSuppliesUrl] = useState<string | null>(null) // 備品リストを開くシートURL
 
   const load = async () => {
     setLoading(true)
@@ -527,6 +535,7 @@ function TodoPanel({ cardId, name, stage }: { cardId: string; name: string; stag
               confirmDel={confirmDel}
               setConfirmDel={setConfirmDel}
               onDelete={onDelete}
+              onOpenSupplies={setSuppliesUrl}
             />
           </div>
         ))}
@@ -556,6 +565,15 @@ function TodoPanel({ cardId, name, stage }: { cardId: string; name: string; stag
           <Plus className="w-4 h-4" /> 大項目を追加
         </button>
       )}
+
+      {/* 備品リスト（リアル販促物などのシートを店舗ごとにチェック管理） */}
+      <SuppliesDialog
+        cardId={cardId}
+        projectName={name}
+        sheetUrl={suppliesUrl ?? ""}
+        open={!!suppliesUrl}
+        onClose={() => setSuppliesUrl(null)}
+      />
     </div>
   )
 }
@@ -583,6 +601,7 @@ function TodoNode({
   confirmDel,
   setConfirmDel,
   onDelete,
+  onOpenSupplies,
 }: {
   node: ProjectTodo
   kids: Record<string, ProjectTodo[]>
@@ -605,6 +624,7 @@ function TodoNode({
   confirmDel: string | null
   setConfirmDel: (v: string | null) => void
   onDelete: (id: string) => void
+  onOpenSupplies: (url: string) => void
 }) {
   const children = kids[node.id] ?? []
   const hasChildren = children.length > 0
@@ -683,6 +703,16 @@ function TodoNode({
 
         {/* 行アクション */}
         <div className="flex items-center gap-1 flex-shrink-0">
+          {sheetUrlOf(node.memo) && (
+            <button
+              onClick={() => onOpenSupplies(sheetUrlOf(node.memo)!)}
+              className="flex items-center gap-1 h-7 px-2 rounded border border-[#1b4da0]/40 bg-blue-50 text-[#1b4da0] text-xs font-medium hover:bg-blue-100"
+              title="備品リストを開く"
+            >
+              <ListChecks className="w-3.5 h-3.5" />
+              備品リスト
+            </button>
+          )}
           <button
             onClick={() => setMemoOpen((m) => ({ ...m, [node.id]: !m[node.id] }))}
             className={`flex items-center justify-center w-7 h-7 rounded border transition-colors ${
@@ -791,6 +821,7 @@ function TodoNode({
               confirmDel={confirmDel}
               setConfirmDel={setConfirmDel}
               onDelete={onDelete}
+              onOpenSupplies={onOpenSupplies}
             />
           ))}
           {addingParent === node.id ? (
