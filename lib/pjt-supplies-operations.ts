@@ -1,50 +1,108 @@
 import { supabase } from "./supabase"
+import { PJT_SUPPLIES_TEMPLATE } from "./pjt-supplies-template"
 
-export type SupplyItem = {
-  key: string
+export interface SupplyItem {
+  id: string
+  card_id: string
+  category: string
+  cat_title: string
   kind: string // 指定 / 推奨
   name: string
   url: string | null
   note: string | null
-  qty: string
-}
-export type SupplyCategory = { key: string; title: string; items: SupplyItem[] }
-
-// スプレッドシートから備品リストを取得（A〜Dのカテゴリ・品目）
-export async function fetchSupplies(
-  sheetUrl: string,
-): Promise<{ found: true; categories: SupplyCategory[]; total: number } | { found: false; message: string }> {
-  const res = await fetch(`/api/supplies?url=${encodeURIComponent(sheetUrl)}`)
-  const data = await res.json()
-  if (data.error) return { found: false, message: data.error }
-  return data
+  qty: string | null
+  checked: boolean
+  position: number
 }
 
-// この店舗(card)でチェック済みの item_key 一覧
-export async function getSupplyChecks(cardId: string): Promise<Set<string>> {
+export async function getSupplyItems(cardId: string): Promise<SupplyItem[]> {
   const { data, error } = await supabase
-    .from("project_supplies")
-    .select("item_key, checked")
+    .from("project_supply_items")
+    .select("*")
     .eq("card_id", cardId)
-    .eq("checked", true)
+    .order("position")
   if (error) {
-    console.error("[getSupplyChecks] error:", error)
+    console.error("[getSupplyItems] error:", error)
     throw error
   }
-  return new Set((data ?? []).map((r: { item_key: string }) => r.item_key))
+  return (data as SupplyItem[]) ?? []
 }
 
-// チェックの保存（card_id × item_key で upsert）
-export async function setSupplyChecked(
-  cardId: string,
-  itemKey: string,
-  checked: boolean,
+// 空ならテンプレートから一括作成（既存は触らない）。二重生成を直列化して防止。
+const seedInFlight = new Map<string, Promise<SupplyItem[]>>()
+export async function ensureSupplyItems(cardId: string): Promise<SupplyItem[]> {
+  const rows = await getSupplyItems(cardId)
+  if (rows.length > 0) return rows
+  const running = seedInFlight.get(cardId)
+  if (running) return running
+  const p = (async () => {
+    const seedRows: Record<string, unknown>[] = []
+    let pos = 0
+    for (const cat of PJT_SUPPLIES_TEMPLATE) {
+      for (const it of cat.items) {
+        seedRows.push({
+          card_id: cardId,
+          category: cat.key,
+          cat_title: cat.title,
+          kind: it.kind,
+          name: it.name,
+          url: it.url ?? null,
+          note: it.note ?? null,
+          qty: it.qty ?? "",
+          checked: false,
+          position: pos++,
+        })
+      }
+    }
+    const { error } = await supabase.from("project_supply_items").insert(seedRows)
+    if (error) throw error
+    return getSupplyItems(cardId)
+  })().finally(() => seedInFlight.delete(cardId))
+  seedInFlight.set(cardId, p)
+  return p
+}
+
+export async function addSupplyItem(input: {
+  card_id: string
+  category: string
+  cat_title: string
+  kind: string
+  name: string
+  url?: string | null
+  qty?: string | null
+  position: number
+}): Promise<SupplyItem> {
+  const { data, error } = await supabase
+    .from("project_supply_items")
+    .insert({
+      card_id: input.card_id,
+      category: input.category,
+      cat_title: input.cat_title,
+      kind: input.kind,
+      name: input.name,
+      url: input.url ?? null,
+      qty: input.qty ?? "",
+      checked: false,
+      position: input.position,
+    })
+    .select()
+    .single()
+  if (error) throw error
+  return data as SupplyItem
+}
+
+export async function updateSupplyItem(
+  id: string,
+  patch: Partial<Pick<SupplyItem, "checked" | "name" | "qty" | "kind" | "url">>,
 ): Promise<void> {
   const { error } = await supabase
-    .from("project_supplies")
-    .upsert(
-      { card_id: cardId, item_key: itemKey, checked, updated_at: new Date().toISOString() },
-      { onConflict: "card_id,item_key" },
-    )
+    .from("project_supply_items")
+    .update({ ...patch, updated_at: new Date().toISOString() })
+    .eq("id", id)
+  if (error) throw error
+}
+
+export async function deleteSupplyItem(id: string): Promise<void> {
+  const { error } = await supabase.from("project_supply_items").delete().eq("id", id)
   if (error) throw error
 }

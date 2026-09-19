@@ -150,10 +150,7 @@ export const PJT_TODO_TEMPLATE: TodoSeed[] = [
           { title: "スタッフルーム カッティングシート" },
         ],
       },
-      {
-        title: "リアル販促物",
-        memo: "https://docs.google.com/spreadsheets/d/1Axw-xl56HQuPugajb4F3sNAN6htw7PinSxVvCpACmZA/edit?usp=sharing",
-      },
+      { title: "リアル販促物" },
     ],
   },
   {
