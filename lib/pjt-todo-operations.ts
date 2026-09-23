@@ -12,6 +12,7 @@ export interface ProjectTodo {
   assignee: string | null
   memo: string
   position: number
+  due_date?: string | null // 期日（YYYY-MM-DD）
   created_at?: string
   updated_at?: string
 }
@@ -176,7 +177,7 @@ export async function addTodo(input: {
 // 1件更新（title/checked/assignee/memo など）
 export async function updateTodo(
   id: string,
-  patch: Partial<Pick<ProjectTodo, "title" | "checked" | "assignee" | "memo" | "position">>,
+  patch: Partial<Pick<ProjectTodo, "title" | "checked" | "assignee" | "memo" | "position" | "due_date">>,
 ): Promise<void> {
   const { error } = await supabase
     .from("project_todos")

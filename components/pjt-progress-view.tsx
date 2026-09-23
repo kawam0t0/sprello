@@ -12,6 +12,8 @@ import {
   Minus,
   ListChecks,
   X,
+  GripVertical,
+  CalendarDays,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -190,6 +192,7 @@ function TodoPanel({ cardId, name, stage }: { cardId: string; name: string; stag
   const [addingText, setAddingText] = useState("")
   const [confirmDel, setConfirmDel] = useState<string | null>(null)
   const [suppliesOpen, setSuppliesOpen] = useState(false) // 備品リストダイアログ
+  const [dragId, setDragId] = useState<string | null>(null) // 並べ替え中のノード
 
   const load = async () => {
     setLoading(true)
@@ -373,6 +376,44 @@ function TodoPanel({ cardId, name, stage }: { cardId: string; name: string; stag
     }
   }
 
+  // 期日の設定/クリア
+  const onEditDue = async (id: string, due: string | null) => {
+    setTodos((prev) => prev.map((x) => (x.id === id ? { ...x, due_date: due } : x)))
+    try {
+      await updateTodo(id, { due_date: due })
+    } catch {
+      load()
+    }
+  }
+
+  // 同じ親の中でドラッグ＆ドロップ並べ替え（targetの前にdragを挿入）
+  const onReorder = async (targetId: string, dId: string) => {
+    if (targetId === dId) return
+    const drag = todos.find((t) => t.id === dId)
+    const target = todos.find((t) => t.id === targetId)
+    if (!drag || !target) return
+    if ((drag.parent_id ?? null) !== (target.parent_id ?? null)) return // 同じ階層内のみ
+    const sibs = todos
+      .filter((t) => (t.parent_id ?? null) === (drag.parent_id ?? null))
+      .sort((a, b) => a.position - b.position)
+    const ids = sibs.map((s) => s.id).filter((id) => id !== dId)
+    const ti = ids.indexOf(targetId)
+    ids.splice(ti, 0, dId)
+    const updates = ids.map((id, idx) => ({ id, position: idx }))
+    setTodos((prev) =>
+      prev.map((t) => {
+        const u = updates.find((x) => x.id === t.id)
+        return u ? { ...t, position: u.position } : t
+      }),
+    )
+    try {
+      const changed = updates.filter((u) => todos.find((t) => t.id === u.id)?.position !== u.position)
+      await Promise.all(changed.map((u) => updateTodo(u.id, { position: u.position })))
+    } catch {
+      load()
+    }
+  }
+
   const onAdd = async (parentId: string | null, level: number) => {
     const text = addingText.trim()
     if (!text) {
@@ -533,6 +574,10 @@ function TodoPanel({ cardId, name, stage }: { cardId: string; name: string; stag
               setConfirmDel={setConfirmDel}
               onDelete={onDelete}
               onOpenSupplies={() => setSuppliesOpen(true)}
+              onEditDue={onEditDue}
+              dragId={dragId}
+              setDragId={setDragId}
+              onReorder={onReorder}
             />
           </div>
         ))}
@@ -598,6 +643,10 @@ function TodoNode({
   setConfirmDel,
   onDelete,
   onOpenSupplies,
+  onEditDue,
+  dragId,
+  setDragId,
+  onReorder,
 }: {
   node: ProjectTodo
   kids: Record<string, ProjectTodo[]>
@@ -621,7 +670,12 @@ function TodoNode({
   setConfirmDel: (v: string | null) => void
   onDelete: (id: string) => void
   onOpenSupplies: () => void
+  onEditDue: (id: string, due: string | null) => void
+  dragId: string | null
+  setDragId: (v: string | null) => void
+  onReorder: (targetId: string, dragId: string) => void
 }) {
+  const [dueOpen, setDueOpen] = useState(false)
   const children = kids[node.id] ?? []
   const hasChildren = children.length > 0
   const canHaveChildren = node.level < 3 // 大・中は子を持てる
@@ -649,9 +703,36 @@ function TodoNode({
   return (
     <div>
       <div
-        className={`group flex items-center gap-1.5 rounded-md px-2 py-1.5 hover:bg-blue-50/70 ${rowBg}`}
+        className={`group flex items-center gap-1.5 rounded-md px-2 py-1.5 hover:bg-blue-50/70 ${rowBg} ${
+          dragId && dragId !== node.id ? "hover:ring-2 hover:ring-[#1b4da0]/40" : ""
+        }`}
         style={{ marginLeft: depth * 16 }}
+        onDragOver={(e) => {
+          if (dragId) e.preventDefault()
+        }}
+        onDrop={(e) => {
+          if (dragId) {
+            e.preventDefault()
+            onReorder(node.id, dragId)
+            setDragId(null)
+          }
+        }}
       >
+        {/* ドラッグ用ハンドル（同じ階層内で並べ替え） */}
+        <span
+          draggable
+          onDragStart={(e) => {
+            setDragId(node.id)
+            e.dataTransfer.effectAllowed = "move"
+            e.dataTransfer.setData("text/plain", node.id)
+          }}
+          onDragEnd={() => setDragId(null)}
+          className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 flex-shrink-0"
+          title="ドラッグで並べ替え"
+        >
+          <GripVertical className="w-4 h-4" />
+        </span>
+
         {/* 開閉（大・中は子を持てるので常に表示） */}
         {canHaveChildren ? (
           <button
@@ -694,6 +775,18 @@ function TodoNode({
           </span>
         )}
 
+        {/* 期日バッジ */}
+        {node.due_date && (
+          <button
+            onClick={() => setDueOpen((o) => !o)}
+            className="flex items-center gap-0.5 text-[11px] text-[#1b4da0] bg-blue-50 border border-[#1b4da0]/30 rounded px-1.5 py-0.5 flex-shrink-0"
+            title="期日を編集"
+          >
+            <CalendarDays className="w-3 h-3" />
+            {node.due_date.slice(5).replace("-", "/")}
+          </button>
+        )}
+
         {/* 担当プルダウン */}
         <AssigneeSelect value={node.assignee} onChange={(a) => onEditAssignee(node.id, a)} />
 
@@ -709,6 +802,17 @@ function TodoNode({
               備品リスト
             </button>
           )}
+          <button
+            onClick={() => setDueOpen((o) => !o)}
+            className={`flex items-center justify-center w-7 h-7 rounded border transition-colors ${
+              node.due_date
+                ? "text-[#1b4da0] border-[#1b4da0]/40 bg-blue-50"
+                : "text-gray-400 border-transparent hover:border-gray-200 hover:bg-gray-100"
+            }`}
+            title={node.due_date ? "期日を編集" : "期日を設定"}
+          >
+            <CalendarDays className="w-3.5 h-3.5" />
+          </button>
           <button
             onClick={() => setMemoOpen((m) => ({ ...m, [node.id]: !m[node.id] }))}
             className={`flex items-center justify-center w-7 h-7 rounded border transition-colors ${
@@ -743,6 +847,29 @@ function TodoNode({
           <Button size="sm" variant="outline" className="h-6 px-2" onClick={() => setConfirmDel(null)}>
             キャンセル
           </Button>
+        </div>
+      )}
+
+      {/* 期日の入力 */}
+      {dueOpen && (
+        <div className="my-1 flex items-center gap-2" style={{ marginLeft: depth * 16 + 40 }}>
+          <input
+            type="date"
+            value={node.due_date ?? ""}
+            onChange={(e) => onEditDue(node.id, e.target.value || null)}
+            className="h-8 text-sm border border-gray-300 rounded px-2"
+          />
+          {node.due_date && (
+            <button
+              onClick={() => onEditDue(node.id, null)}
+              className="text-xs text-gray-500 hover:text-red-600"
+            >
+              クリア
+            </button>
+          )}
+          <button onClick={() => setDueOpen(false)} className="text-xs text-gray-500 hover:text-gray-800">
+            閉じる
+          </button>
         </div>
       )}
 
@@ -818,6 +945,10 @@ function TodoNode({
               setConfirmDel={setConfirmDel}
               onDelete={onDelete}
               onOpenSupplies={onOpenSupplies}
+              onEditDue={onEditDue}
+              dragId={dragId}
+              setDragId={setDragId}
+              onReorder={onReorder}
             />
           ))}
           {addingParent === node.id ? (
