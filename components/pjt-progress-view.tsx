@@ -33,6 +33,7 @@ import {
 } from "@/lib/pjt-todo-operations"
 import { PJT_ASSIGNEES } from "@/lib/pjt-todo-template"
 import { SuppliesDialog } from "@/components/supplies-dialog"
+import { updateCard } from "@/lib/database-operations"
 
 // 備品リスト（ダイアログ）を開けるようにする項目名
 const hasSupplies = (title: string) => title.includes("リアル販促物")
@@ -208,6 +209,23 @@ function TodoPanel({
   const [confirmDel, setConfirmDel] = useState<string | null>(null)
   const [suppliesOpen, setSuppliesOpen] = useState(false) // 備品リストダイアログ
   const [dragId, setDragId] = useState<string | null>(null) // 並べ替え中のノード
+
+  // 住所（手動入力可）。初期値はボードのデータ。
+  const [addrVal, setAddrVal] = useState(address ?? "")
+  const [addrEditing, setAddrEditing] = useState(false)
+  useEffect(() => {
+    setAddrVal(address ?? "")
+  }, [address])
+  const saveAddr = async () => {
+    setAddrEditing(false)
+    const v = addrVal.trim()
+    if (v === (address ?? "")) return
+    try {
+      await updateCard(cardId, { address: v })
+    } catch {
+      setAddrVal(address ?? "") // 失敗したら戻す
+    }
+  }
 
   const load = async () => {
     setLoading(true)
@@ -507,12 +525,31 @@ function TodoPanel({
             <div className="flex items-center gap-1.5 px-3 py-1.5 min-w-0">
               <MapPin className="w-4 h-4 text-[#1b4da0] flex-shrink-0" />
               <span className="text-[11px] text-gray-500 flex-shrink-0">住所</span>
-              <span
-                className="text-sm font-bold text-gray-900 truncate min-w-[120px] max-w-[420px]"
-                title={address ?? ""}
-              >
-                {address ?? ""}
-              </span>
+              {addrEditing ? (
+                <input
+                  value={addrVal}
+                  onChange={(e) => setAddrVal(e.target.value)}
+                  onBlur={saveAddr}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") e.currentTarget.blur()
+                    if (e.key === "Escape") {
+                      setAddrVal(address ?? "")
+                      setAddrEditing(false)
+                    }
+                  }}
+                  autoFocus
+                  placeholder="住所を入力"
+                  className="text-sm font-bold text-gray-900 bg-white border border-[#1b4da0]/50 rounded px-1.5 py-0.5 min-w-[180px] max-w-[420px]"
+                />
+              ) : (
+                <button
+                  onClick={() => setAddrEditing(true)}
+                  className="text-sm font-bold text-gray-900 truncate min-w-[120px] max-w-[420px] text-left hover:underline"
+                  title={addrVal || "クリックして住所を入力"}
+                >
+                  {addrVal || <span className="text-gray-400 font-normal">住所を入力</span>}
+                </button>
+              )}
             </div>
           </div>
 
