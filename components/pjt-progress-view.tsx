@@ -14,6 +14,7 @@ import {
   X,
   GripVertical,
   CalendarDays,
+  MapPin,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -143,6 +144,7 @@ export function PjtProgressView({ cards = [] }: { cards?: CardWithList[] }) {
             name={selected.card.store_name || selected.card.title}
             stage={selected.stage}
             openDate={selected.card.open_date ?? null}
+            address={selected.card.address ?? null}
           />
         ) : (
           <div className="p-10 text-center text-gray-400">左からプロジェクトを選択してください</div>
@@ -187,11 +189,13 @@ function TodoPanel({
   name,
   stage,
   openDate,
+  address,
 }: {
   cardId: string
   name: string
   stage: string
   openDate: string | null
+  address: string | null
 }) {
   const [todos, setTodos] = useState<ProjectTodo[]>([])
   const [loading, setLoading] = useState(true)
@@ -481,7 +485,7 @@ function TodoPanel({
     <div className="p-5 max-w-[1500px] mx-auto">
       {/* ヘッダー */}
       <div className="mb-4">
-        <div className="flex items-center gap-2 mb-2">
+        <div className="flex items-center gap-2 mb-2 flex-wrap">
           <span
             className="text-white text-xs font-bold px-2 py-0.5 rounded-full"
             style={{ backgroundColor: STAGE_COLORS[stage] ?? "#6b7280" }}
@@ -489,6 +493,29 @@ function TodoPanel({
             {stage}
           </span>
           <h2 className="text-xl font-bold text-gray-800">{name}</h2>
+
+          {/* ボードのOPEN日・住所を目立たせて表示（無ければ空欄） */}
+          <div className="ml-1 flex items-stretch rounded-lg border-2 border-[#1b4da0]/50 bg-blue-50 overflow-hidden">
+            <div className="flex items-center gap-1.5 px-3 py-1.5">
+              <CalendarDays className="w-4 h-4 text-[#1b4da0] flex-shrink-0" />
+              <span className="text-[11px] text-gray-500">OPEN日</span>
+              <span className="text-sm font-bold text-gray-900 tabular-nums min-w-[90px]">
+                {openDate ? openDate.replace(/-/g, "/") : ""}
+              </span>
+            </div>
+            <div className="w-px bg-[#1b4da0]/20" />
+            <div className="flex items-center gap-1.5 px-3 py-1.5 min-w-0">
+              <MapPin className="w-4 h-4 text-[#1b4da0] flex-shrink-0" />
+              <span className="text-[11px] text-gray-500 flex-shrink-0">住所</span>
+              <span
+                className="text-sm font-bold text-gray-900 truncate min-w-[120px] max-w-[420px]"
+                title={address ?? ""}
+              >
+                {address ?? ""}
+              </span>
+            </div>
+          </div>
+
           <div className="ml-auto flex items-center gap-2 text-sm text-gray-600">
             <button
               className="text-xs text-gray-500 hover:text-gray-800 underline"
