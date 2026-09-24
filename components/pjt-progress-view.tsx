@@ -142,6 +142,7 @@ export function PjtProgressView({ cards = [] }: { cards?: CardWithList[] }) {
             cardId={selected.card.id}
             name={selected.card.store_name || selected.card.title}
             stage={selected.stage}
+            openDate={selected.card.open_date ?? null}
           />
         ) : (
           <div className="p-10 text-center text-gray-400">左からプロジェクトを選択してください</div>
@@ -181,7 +182,17 @@ function ProjectRow({
 }
 
 // ---- 選択プロジェクトのTODOツリー ----
-function TodoPanel({ cardId, name, stage }: { cardId: string; name: string; stage: string }) {
+function TodoPanel({
+  cardId,
+  name,
+  stage,
+  openDate,
+}: {
+  cardId: string
+  name: string
+  stage: string
+  openDate: string | null
+}) {
   const [todos, setTodos] = useState<ProjectTodo[]>([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState<string | null>(null)
@@ -199,6 +210,21 @@ function TodoPanel({ cardId, name, stage }: { cardId: string; name: string; stag
     setErr(null)
     try {
       const rows = await loadProjectTodos(cardId)
+      // ボードの「OPEN日」を PJT進捗へ反映：OPEN日決定に自動チェック＋期日を格納（ボード→PJTの一方向）
+      const openItem = rows.find((r) => r.title === "OPEN日決定")
+      if (openItem) {
+        const wantChecked = !!openDate
+        const wantDue = openDate || null
+        if (openItem.checked !== wantChecked || (openItem.due_date ?? null) !== wantDue) {
+          openItem.checked = wantChecked
+          openItem.due_date = wantDue
+          try {
+            await updateTodo(openItem.id, { checked: wantChecked, due_date: wantDue })
+          } catch {
+            /* 反映失敗は致命的でないため無視 */
+          }
+        }
+      }
       setTodos(rows)
       // デフォルトは大項目だけ表示（すべて畳んだ状態）。開きたい項目は各chevron／「全て開閉」で。
     } catch (e) {
@@ -213,7 +239,7 @@ function TodoPanel({ cardId, name, stage }: { cardId: string; name: string; stag
   useEffect(() => {
     load()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cardId])
+  }, [cardId, openDate])
 
   // 親→子のマップ
   const kids = useMemo(() => {

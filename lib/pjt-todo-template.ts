@@ -17,6 +17,8 @@ export const PJT_TODO_TEMPLATE: TodoSeed[] = [
     title: "OPEN日を決める",
     assignee: "岡村",
     children: [
+      // ボードの「OPEN日」が入力されると自動でチェック＋期日が入る
+      { title: "OPEN日決定" },
       { title: "OPEN看板の設置" },
       { title: "電光掲示板の設置" },
       { title: "infomation/マップのアップ(ホームページ)" },
