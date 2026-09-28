@@ -14,7 +14,7 @@ export type TodoSeed = {
 
 export const PJT_TODO_TEMPLATE: TodoSeed[] = [
   {
-    title: "OPEN日を決める",
+    title: "契約済になれば即実施/確認すること",
     assignee: "岡村",
     children: [
       // ボードの「OPEN日」が入力されると自動でチェック＋期日が入る
@@ -25,6 +25,28 @@ export const PJT_TODO_TEMPLATE: TodoSeed[] = [
       { title: "LPの作成" },
       { title: "店舗ポスターの作成/設置" },
       { title: "トレーラー納品日決定" },
+      // 「システムを整える」から移動した項目
+      {
+        title: "光回線の契約",
+        children: [{ title: "申請" }, { title: "工事日決定" }, { title: "開通" }],
+      },
+      {
+        title: "GoogleMap",
+        children: [{ title: "申請" }, { title: "開設" }, { title: "設定" }],
+      },
+      {
+        title: "Squareアカウント",
+        children: [
+          { title: "開設" },
+          { title: "商品登録" },
+          { title: "キャッシュレス申請" },
+          { title: "ターミナル周辺機器購入" },
+        ],
+      },
+      {
+        title: "DialPad",
+        children: [{ title: "申請" }, { title: "発番" }],
+      },
     ],
   },
   {
@@ -63,23 +85,6 @@ export const PJT_TODO_TEMPLATE: TodoSeed[] = [
         children: [{ title: "Googleアカウント開設" }, { title: "Googleアカウント共有" }],
       },
       {
-        title: "DialPad",
-        children: [{ title: "申請" }, { title: "発番" }],
-      },
-      {
-        title: "Squareアカウント",
-        children: [
-          { title: "開設" },
-          { title: "商品登録" },
-          { title: "キャッシュレス申請" },
-          { title: "ターミナル周辺機器購入" },
-        ],
-      },
-      {
-        title: "GoogleMap",
-        children: [{ title: "申請" }, { title: "開設" }, { title: "設定" }],
-      },
-      {
         title: "Airshift",
         children: [{ title: "アカウント開設" }],
       },
@@ -92,10 +97,6 @@ export const PJT_TODO_TEMPLATE: TodoSeed[] = [
           { title: "ライブカメラ" },
           { title: "LANケーブル" },
         ],
-      },
-      {
-        title: "光回線の契約",
-        children: [{ title: "申請" }, { title: "工事日決定" }, { title: "開通" }],
       },
       {
         title: "店舗インフラ開発",

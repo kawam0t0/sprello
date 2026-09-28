@@ -61,6 +61,31 @@ const MAJOR_COLORS = [
   "#dc2626",
 ]
 
+// 大項目の固定表示順（この順で必ず並べる。中項目・小項目はドラッグで入れ替え可）
+// ここに無いタイトル（ユーザーが独自に追加した大項目など）は末尾へ回す。
+const MAJOR_ORDER = [
+  "契約済になれば即実施/確認すること",
+  "OPENすることを伝える",
+  "キャンペーン&プロモーションを決める",
+  "システムを整える",
+  "研修を決める",
+  "採用を決める",
+  "店舗運営備品を揃える",
+  "スタッフを管理する",
+  "店舗運営備品を買う",
+]
+const majorRank = (title: string): number => {
+  const i = MAJOR_ORDER.indexOf(title)
+  return i === -1 ? MAJOR_ORDER.length : i
+}
+// 大項目を固定順に並べ替える（同順位は元の position 順を保つ安定ソート）
+function sortMajors<T extends { title: string }>(roots: T[]): T[] {
+  return roots
+    .map((r, idx) => ({ r, idx }))
+    .sort((a, b) => majorRank(a.r.title) - majorRank(b.r.title) || a.idx - b.idx)
+    .map((x) => x.r)
+}
+
 // このビューに出す対象段階（契約済以降）
 const TARGET_STAGES = ["契約済", "工事中", "OPEN"] as const
 const STAGE_ORDER: Record<string, number> = { 契約済: 0, 工事中: 1, OPEN: 2 }
@@ -291,6 +316,9 @@ function TodoPanel({
     return m
   }, [todos])
 
+  // 大項目は固定順で表示（中項目・小項目は kids のまま＝position順でドラッグ入替可）
+  const rootNodes = useMemo(() => sortMajors(kids["root"] ?? []), [kids])
+
   // 葉ベースの進捗（子がなければ自分が葉）
   const leafStats = (id: string): { done: number; total: number } => {
     const children = kids[id] ?? []
@@ -319,15 +347,15 @@ function TodoPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [todos, kids])
 
-  // 大項目別の進捗（各大項目の配下リーフ単位で集計）
+  // 大項目別の進捗（各大項目の配下リーフ単位で集計。表示と同じ固定順で並べる）
   const byMajor = useMemo(() => {
-    return (kids["root"] ?? []).map((r) => ({
+    return rootNodes.map((r) => ({
       id: r.id,
       title: r.title,
       ...leafStats(r.id),
     }))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [todos, kids])
+  }, [todos, rootNodes])
 
   // 担当者別の進捗（末端項目＝リーフ単位。担当が振られているものだけ集計。未割当は除外）
   // 親に担当が付いていれば配下のリーフはその担当として数える（＝画面表示どおりに動的集計）。
@@ -664,7 +692,7 @@ function TodoPanel({
       {/* ツリー：大項目をカードにして複数列（画面幅に応じて 2〜3 列）で並べる。
           縦スクロールを大幅に短縮。各カードは列内で分割されない。 */}
       <div className="gap-4 [column-fill:_balance] columns-1 lg:columns-2 2xl:columns-3">
-        {(kids["root"] ?? []).map((node) => (
+        {rootNodes.map((node) => (
           <div
             key={node.id}
             className="break-inside-avoid mb-4 rounded-xl border border-gray-200 bg-white p-2 shadow-sm"
@@ -822,34 +850,40 @@ function TodoNode({
     <div>
       <div
         className={`group flex items-center gap-1.5 rounded-md px-2 py-1.5 hover:bg-blue-50/70 ${rowBg} ${
-          dragId && dragId !== node.id ? "hover:ring-2 hover:ring-[#1b4da0]/40" : ""
+          dragId && dragId !== node.id && node.level !== 1 ? "hover:ring-2 hover:ring-[#1b4da0]/40" : ""
         }`}
         style={{ marginLeft: depth * 16 }}
         onDragOver={(e) => {
-          if (dragId) e.preventDefault()
+          // 大項目は固定順なので並べ替えのドロップ先にしない
+          if (dragId && node.level !== 1) e.preventDefault()
         }}
         onDrop={(e) => {
-          if (dragId) {
+          if (dragId && node.level !== 1) {
             e.preventDefault()
             onReorder(node.id, dragId)
             setDragId(null)
           }
         }}
       >
-        {/* ドラッグ用ハンドル（同じ階層内で並べ替え） */}
-        <span
-          draggable
-          onDragStart={(e) => {
-            setDragId(node.id)
-            e.dataTransfer.effectAllowed = "move"
-            e.dataTransfer.setData("text/plain", node.id)
-          }}
-          onDragEnd={() => setDragId(null)}
-          className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 flex-shrink-0"
-          title="ドラッグで並べ替え"
-        >
-          <GripVertical className="w-4 h-4" />
-        </span>
+        {/* ドラッグ用ハンドル（同じ階層内で並べ替え）。
+            大項目（level=1）は固定順で表示するためドラッグ不可＝ハンドルを出さない。 */}
+        {node.level === 1 ? (
+          <span className="w-4 flex-shrink-0" />
+        ) : (
+          <span
+            draggable
+            onDragStart={(e) => {
+              setDragId(node.id)
+              e.dataTransfer.effectAllowed = "move"
+              e.dataTransfer.setData("text/plain", node.id)
+            }}
+            onDragEnd={() => setDragId(null)}
+            className="cursor-grab active:cursor-grabbing text-gray-300 hover:text-gray-500 flex-shrink-0"
+            title="ドラッグで並べ替え"
+          >
+            <GripVertical className="w-4 h-4" />
+          </span>
+        )}
 
         {/* 開閉（大・中は子を持てるので常に表示） */}
         {canHaveChildren ? (
