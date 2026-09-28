@@ -46,6 +46,7 @@ const ASSIGNEE_COLORS: Record<string, string> = {
   大野: "#d97706",
   小川: "#7c3aed",
   河本: "#db2777",
+  後藤: "#0d9488",
 }
 
 // 大項目別バーの色（見分け用・順番に循環）
@@ -209,6 +210,22 @@ function TodoPanel({
   const [confirmDel, setConfirmDel] = useState<string | null>(null)
   const [suppliesOpen, setSuppliesOpen] = useState(false) // 備品リストダイアログ
   const [dragId, setDragId] = useState<string | null>(null) // 並べ替え中のノード
+  const [calBusy, setCalBusy] = useState(0) // Googleカレンダー同期中の件数（>0で「同期中」表示）
+
+  // 指定todoを担当者本人のGoogleカレンダーへ同期（サーバー側で実行）。
+  // 裏側で走らせるだけなので画面は固まらない。未設定・失敗時も静かに無視。
+  const syncCalendar = (ids: string[]) => {
+    for (const id of ids) {
+      setCalBusy((n) => n + 1)
+      fetch("/api/pjt-calendar/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ todoId: id }),
+      })
+        .catch(() => {})
+        .finally(() => setCalBusy((n) => Math.max(0, n - 1)))
+    }
+  }
 
   // 住所（手動入力可）。初期値はボードのデータ。
   const [addrVal, setAddrVal] = useState(address ?? "")
@@ -410,6 +427,9 @@ function TodoPanel({
     setTodos((prev) => prev.map((x) => (ids.includes(x.id) ? { ...x, assignee } : x)))
     try {
       await setAssigneeMany(ids, assignee)
+      // 担当が変わったので、日付が入っている項目のカレンダー予定を担当者本人へ付け替える
+      const dated = ids.filter((tid) => todos.find((t) => t.id === tid)?.due_date)
+      if (dated.length) syncCalendar(dated)
     } catch {
       load()
     }
@@ -429,6 +449,8 @@ function TodoPanel({
     setTodos((prev) => prev.map((x) => (x.id === id ? { ...x, due_date: due } : x)))
     try {
       await updateTodo(id, { due_date: due })
+      // 日付が変わったらカレンダーへ反映（設定→作成/更新、クリア→削除はサーバー側で判定）
+      syncCalendar([id])
     } catch {
       load()
     }
@@ -574,6 +596,12 @@ function TodoPanel({
           <span className="text-sm font-semibold text-gray-700 tabular-nums">
             {overall.done}/{overall.total}（{pct}%）
           </span>
+          {calBusy > 0 && (
+            <span className="flex items-center gap-1 text-[11px] text-[#1b4da0] whitespace-nowrap">
+              <CalendarDays className="w-3.5 h-3.5 animate-pulse" />
+              カレンダー同期中…
+            </span>
+          )}
         </div>
 
         {/* 大項目別の進捗 */}

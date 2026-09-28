@@ -13,6 +13,8 @@ export interface ProjectTodo {
   memo: string
   position: number
   due_date?: string | null // 期日（YYYY-MM-DD）
+  gcal_event_id?: string | null // 連携したGoogleカレンダー予定のID
+  gcal_calendar_id?: string | null // 予定を置いたカレンダー（担当者のメール）
   created_at?: string
   updated_at?: string
 }

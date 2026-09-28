@@ -3,7 +3,7 @@
 // そのプロジェクト専用に複製する（チェック状態はプロジェクトごとに独立）。
 
 // 担当プルダウンの選択肢（デフォルト）
-export const PJT_ASSIGNEES = ["岡村", "ラメザニ", "霜田", "大野", "小川", "河本"] as const
+export const PJT_ASSIGNEES = ["岡村", "ラメザニ", "霜田", "大野", "小川", "河本", "後藤"] as const
 
 export type TodoSeed = {
   title: string
