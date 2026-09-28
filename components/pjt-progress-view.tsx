@@ -4,7 +4,6 @@ import type React from "react"
 import { useEffect, useMemo, useRef, useState } from "react"
 import {
   ChevronRight,
-  ChevronDown,
   Plus,
   Trash2,
   StickyNote,
@@ -50,18 +49,6 @@ const ASSIGNEE_COLORS: Record<string, string> = {
   河本: "#db2777",
   後藤: "#0d9488",
 }
-
-// 大項目別バーの色（見分け用・順番に循環）
-const MAJOR_COLORS = [
-  "#2563eb",
-  "#0891b2",
-  "#16a34a",
-  "#d97706",
-  "#7c3aed",
-  "#db2777",
-  "#0d9488",
-  "#dc2626",
-]
 
 // 大項目の固定表示順（この順で必ず並べる。中項目・小項目はドラッグで入れ替え可）
 // ここに無いタイトル（ユーザーが独自に追加した大項目など）は末尾へ回す。
@@ -682,10 +669,16 @@ function TodoPanel({
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-2">
               {byMajor.map((m, i) => {
                 const p = m.total ? Math.round((m.done / m.total) * 100) : 0
-                const color = MAJOR_COLORS[i % MAJOR_COLORS.length]
+                const color = "#1b4da0" // Sprelloベースカラーに統一
                 return (
                   <div key={m.id} className="flex items-center gap-2">
-                    <span className="w-40 flex-shrink-0 text-xs text-gray-700 truncate" title={m.title}>
+                    <span
+                      className="flex-shrink-0 flex items-center justify-center w-5 h-5 rounded-full text-white text-[10px] font-bold"
+                      style={{ backgroundColor: color }}
+                    >
+                      {i + 1}
+                    </span>
+                    <span className="w-36 flex-shrink-0 text-xs text-gray-700 truncate" title={m.title}>
                       {m.title}
                     </span>
                     <div className="flex-1 h-2 bg-gray-100 rounded-full overflow-hidden">
@@ -736,13 +729,16 @@ function TodoPanel({
           グリッドなので、1つを展開して高さが変わっても他のカードが列を移動しない
           （＝開いても場所が動かず見やすい）。上揃えで余白のブレも抑える。 */}
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
-        {rootNodes.map((node) => (
+        {rootNodes.map((node, i) => (
           <div
             key={node.id}
-            className="rounded-xl border border-gray-200 bg-white p-2 shadow-sm"
+            className="rounded-xl border border-gray-200 bg-white p-2 shadow-sm transition-all duration-200 hover:shadow-lg hover:-translate-y-0.5"
+            style={{ borderTop: "3px solid #1b4da0" }}
           >
             <TodoNode
               node={node}
+              majorIndex={i + 1}
+              accent="#1b4da0"
               kids={kids}
               expanded={expanded}
               setExpanded={setExpanded}
@@ -812,6 +808,8 @@ function TodoPanel({
 // ---- 1ノード（再帰） ----
 function TodoNode({
   node,
+  majorIndex,
+  accent,
   kids,
   expanded,
   setExpanded,
@@ -839,6 +837,8 @@ function TodoNode({
   onReorder,
 }: {
   node: ProjectTodo
+  majorIndex?: number // 大項目の通し番号（1〜）。level=1のときだけ使う
+  accent?: string // 大項目のアクセント色
   kids: Record<string, ProjectTodo[]>
   expanded: Record<string, boolean>
   setExpanded: React.Dispatch<React.SetStateAction<Record<string, boolean>>>
@@ -879,7 +879,14 @@ function TodoNode({
         : "unchecked"
 
   const depth = node.level - 1
-  const rowBg = node.level === 1 ? "bg-[#1b4da0]/5" : "bg-transparent"
+  const isMajor = node.level === 1
+  const pct = stats.total ? Math.round((stats.done / stats.total) * 100) : 0
+  const rowBg = isMajor ? "" : "bg-transparent"
+  const rowPad = isMajor ? "px-3 py-2.5 rounded-lg" : "px-2 py-1.5 rounded-md"
+  // 大項目のヘッダーはアクセント色でうっすら着色（おしゃれで見分けやすく）
+  const rowStyle: React.CSSProperties = { marginLeft: depth * 16 }
+  if (isMajor) rowStyle.backgroundColor = `${accent ?? "#1b4da0"}14`
+  const sizeCls = isMajor ? "text-base" : "text-sm"
   const titleCls =
     node.level === 1
       ? "font-bold text-gray-900"
@@ -893,10 +900,10 @@ function TodoNode({
   return (
     <div>
       <div
-        className={`group flex items-center gap-1.5 rounded-md px-2 py-1.5 hover:bg-blue-50/70 ${rowBg} ${
+        className={`group flex items-center gap-1.5 ${rowPad} transition-colors ${isMajor ? "" : "hover:bg-blue-50/70"} ${rowBg} ${
           dragId && dragId !== node.id && node.level !== 1 ? "hover:ring-2 hover:ring-[#1b4da0]/40" : ""
         }`}
-        style={{ marginLeft: depth * 16 }}
+        style={rowStyle}
         onDragOver={(e) => {
           // 大項目は固定順なので並べ替えのドロップ先にしない
           if (dragId && node.level !== 1) e.preventDefault()
@@ -911,8 +918,14 @@ function TodoNode({
       >
         {/* ドラッグ用ハンドル（同じ階層内で並べ替え）。
             大項目（level=1）は固定順で表示するためドラッグ不可＝ハンドルを出さない。 */}
-        {node.level === 1 ? (
-          <span className="w-4 flex-shrink-0" />
+        {isMajor ? (
+          // 大項目：通し番号バッジ（アクセント色の丸）
+          <span
+            className="flex-shrink-0 flex items-center justify-center w-7 h-7 rounded-full text-white text-sm font-bold shadow-sm"
+            style={{ backgroundColor: accent ?? "#1b4da0" }}
+          >
+            {majorIndex}
+          </span>
         ) : (
           <span
             draggable
@@ -929,14 +942,17 @@ function TodoNode({
           </span>
         )}
 
-        {/* 開閉（大・中は子を持てるので常に表示） */}
+        {/* 開閉（大・中は子を持てるので常に表示）。矢印は開くと回転（アニメーション） */}
         {canHaveChildren ? (
           <button
             onClick={() => setExpanded((e) => ({ ...e, [node.id]: !isOpen }))}
-            className="text-gray-400 hover:text-gray-700 flex-shrink-0"
+            className={`flex-shrink-0 hover:text-gray-700 ${isMajor ? "text-gray-500" : "text-gray-400"}`}
             title={isOpen ? "閉じる" : "開く"}
           >
-            {isOpen ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+            <ChevronRight
+              className={`${isMajor ? "w-5 h-5" : "w-4 h-4"} transition-transform duration-200`}
+              style={{ transform: isOpen ? "rotate(90deg)" : "none" }}
+            />
           </button>
         ) : (
           <span className="w-4 flex-shrink-0" />
@@ -954,7 +970,7 @@ function TodoNode({
           />
         ) : (
           <button
-            className={`flex-1 text-left text-sm truncate ${titleCls} ${
+            className={`flex-1 text-left ${sizeCls} truncate ${titleCls} ${
               state === "checked" ? "line-through text-gray-400" : ""
             }`}
             title={node.title}
@@ -964,8 +980,23 @@ function TodoNode({
           </button>
         )}
 
-        {/* 親は進捗数 */}
-        {hasChildren && (
+        {/* 大項目：進捗バー＋％（大きく・ひと目で分かるように） */}
+        {isMajor && hasChildren && (
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="w-24 h-2 bg-gray-200/80 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full transition-all duration-500"
+                style={{ width: `${pct}%`, backgroundColor: accent ?? "#1b4da0" }}
+              />
+            </div>
+            <span className="text-xs font-semibold text-gray-600 tabular-nums w-14 text-right">
+              {stats.done}/{stats.total}
+            </span>
+          </div>
+        )}
+
+        {/* 中・小の親は進捗数 */}
+        {!isMajor && hasChildren && (
           <span className="text-[11px] text-gray-400 tabular-nums flex-shrink-0">
             {stats.done}/{stats.total}
           </span>
@@ -1113,9 +1144,9 @@ function TodoNode({
         )
       )}
 
-      {/* 子＋追加行（大・中は子を持てる。開いているときに表示） */}
+      {/* 子＋追加行（大・中は子を持てる。開いているときに表示）。開くとふわっと表示 */}
       {canHaveChildren && isOpen && (
-        <div className="mt-1 space-y-1">
+        <div className="mt-1 space-y-1 animate-in fade-in slide-in-from-top-1 duration-200">
           {children.map((c) => (
             <TodoNode
               key={c.id}
