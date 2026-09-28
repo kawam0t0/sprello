@@ -15,6 +15,8 @@ import {
   GripVertical,
   CalendarDays,
   MapPin,
+  Menu,
+  PanelLeftClose,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -110,6 +112,7 @@ export function PjtProgressView({ cards = [] }: { cards?: CardWithList[] }) {
 
   const [stageFilter, setStageFilter] = useState<string>("all")
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [sidebarOpen, setSidebarOpen] = useState(false) // プロジェクト一覧の開閉（ハンバーガー）
 
   const shownProjects = projects.filter((p) => stageFilter === "all" || p.stage === stageFilter)
 
@@ -121,49 +124,87 @@ export function PjtProgressView({ cards = [] }: { cards?: CardWithList[] }) {
   const selected = projects.find((p) => p.card.id === selectedId) ?? null
 
   return (
-    <div className="flex-1 min-h-0 flex bg-gray-50">
-      {/* 左：対象プロジェクト一覧 */}
-      <aside className="w-72 flex-shrink-0 border-r bg-white flex flex-col min-h-0">
-        <div className="p-3 border-b">
-          <div className="flex items-center gap-2 mb-2">
-            <ListChecks className="w-5 h-5 text-[#1b4da0]" />
-            <h2 className="font-bold text-gray-800">PJT進捗</h2>
-            <span className="ml-auto text-xs text-gray-400">{projects.length}件</span>
-          </div>
-          <div className="flex flex-wrap gap-1">
-            {["all", ...TARGET_STAGES].map((s) => (
-              <button
-                key={s}
-                onClick={() => setStageFilter(s)}
-                className={`px-2 py-0.5 rounded-full text-xs border ${
-                  stageFilter === s
-                    ? "bg-[#1b4da0] text-white border-[#1b4da0]"
-                    : "bg-white text-gray-500 border-gray-300 hover:bg-gray-50"
-                }`}
-              >
-                {s === "all" ? "全て" : s}
-              </button>
-            ))}
-          </div>
-        </div>
-        <div className="flex-1 overflow-y-auto min-h-0">
-          {shownProjects.length === 0 && (
-            <div className="p-4 text-sm text-gray-400">対象のプロジェクトがありません</div>
-          )}
-          {shownProjects.map((p) => (
-            <ProjectRow
-              key={p.card.id}
-              name={p.card.store_name || p.card.title}
-              stage={p.stage}
-              active={p.card.id === selectedId}
-              onClick={() => setSelectedId(p.card.id)}
-            />
-          ))}
-        </div>
-      </aside>
+    <div className="flex-1 min-h-0 flex bg-gray-50 relative">
+      {/* 左：対象プロジェクト一覧（ハンバーガーで開閉するドロワー。常時表示はしない） */}
+      {sidebarOpen && (
+        <>
+          {/* 背景クリックで閉じる */}
+          <div
+            className="absolute inset-0 z-20 bg-black/20"
+            onClick={() => setSidebarOpen(false)}
+            aria-hidden
+          />
+          <aside className="absolute left-0 top-0 bottom-0 z-30 w-72 border-r bg-white flex flex-col min-h-0 shadow-2xl">
+            <div className="p-3 border-b">
+              <div className="flex items-center gap-2 mb-2">
+                <ListChecks className="w-5 h-5 text-[#1b4da0]" />
+                <h2 className="font-bold text-gray-800">PJT進捗</h2>
+                <span className="ml-auto text-xs text-gray-400">{projects.length}件</span>
+                <button
+                  onClick={() => setSidebarOpen(false)}
+                  className="text-gray-400 hover:text-gray-700"
+                  title="閉じる"
+                >
+                  <PanelLeftClose className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1">
+                {["all", ...TARGET_STAGES].map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => setStageFilter(s)}
+                    className={`px-2 py-0.5 rounded-full text-xs border ${
+                      stageFilter === s
+                        ? "bg-[#1b4da0] text-white border-[#1b4da0]"
+                        : "bg-white text-gray-500 border-gray-300 hover:bg-gray-50"
+                    }`}
+                  >
+                    {s === "all" ? "全て" : s}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto min-h-0">
+              {shownProjects.length === 0 && (
+                <div className="p-4 text-sm text-gray-400">対象のプロジェクトがありません</div>
+              )}
+              {shownProjects.map((p) => (
+                <ProjectRow
+                  key={p.card.id}
+                  name={p.card.store_name || p.card.title}
+                  stage={p.stage}
+                  active={p.card.id === selectedId}
+                  onClick={() => {
+                    setSelectedId(p.card.id)
+                    setSidebarOpen(false) // 選んだら閉じる
+                  }}
+                />
+              ))}
+            </div>
+          </aside>
+        </>
+      )}
 
       {/* 右：選択プロジェクトのTODO */}
       <section className="flex-1 min-h-0 overflow-y-auto">
+        {/* 上部バー：ハンバーガー＋現在のプロジェクト名 */}
+        <div className="sticky top-0 z-10 flex items-center gap-2 border-b bg-white/95 px-3 py-2 backdrop-blur">
+          <button
+            onClick={() => setSidebarOpen(true)}
+            className="flex items-center gap-1.5 rounded-md border border-gray-300 px-2.5 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
+            title="プロジェクト一覧を開く"
+          >
+            <Menu className="w-4 h-4" />
+            <span className="hidden sm:inline">プロジェクト一覧</span>
+          </button>
+          {selected && (
+            <span className="ml-1 truncate text-sm font-semibold text-gray-800">
+              {selected.card.store_name || selected.card.title}
+            </span>
+          )}
+          <span className="ml-auto text-xs text-gray-400">{projects.length}件</span>
+        </div>
+
         {selected ? (
           <TodoPanel
             key={selected.card.id}
@@ -174,7 +215,9 @@ export function PjtProgressView({ cards = [] }: { cards?: CardWithList[] }) {
             address={selected.card.address ?? null}
           />
         ) : (
-          <div className="p-10 text-center text-gray-400">左からプロジェクトを選択してください</div>
+          <div className="p-10 text-center text-gray-400">
+            上の「プロジェクト一覧」からプロジェクトを選択してください
+          </div>
         )}
       </section>
     </div>
@@ -689,13 +732,14 @@ function TodoPanel({
         <div className="mb-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded p-3">{err}</div>
       )}
 
-      {/* ツリー：大項目をカードにして複数列（画面幅に応じて 2〜3 列）で並べる。
-          縦スクロールを大幅に短縮。各カードは列内で分割されない。 */}
-      <div className="gap-4 [column-fill:_balance] columns-1 lg:columns-2 2xl:columns-3">
+      {/* ツリー：大項目をカードにして固定グリッド（画面幅に応じて 1〜2 列）で並べる。
+          グリッドなので、1つを展開して高さが変わっても他のカードが列を移動しない
+          （＝開いても場所が動かず見やすい）。上揃えで余白のブレも抑える。 */}
+      <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 items-start">
         {rootNodes.map((node) => (
           <div
             key={node.id}
-            className="break-inside-avoid mb-4 rounded-xl border border-gray-200 bg-white p-2 shadow-sm"
+            className="rounded-xl border border-gray-200 bg-white p-2 shadow-sm"
           >
             <TodoNode
               node={node}
