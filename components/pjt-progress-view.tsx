@@ -77,7 +77,6 @@ function sortMajors<T extends { title: string }>(roots: T[]): T[] {
 
 // このビューに出す対象段階（契約済以降）
 const TARGET_STAGES = ["契約済", "工事中", "OPEN"] as const
-const STAGE_ORDER: Record<string, number> = { 契約済: 0, 工事中: 1, OPEN: 2 }
 const LEVEL_LABEL = ["", "大項目", "中項目", "小項目"]
 
 type CardWithList = Card & { listTitle?: string }
@@ -88,12 +87,11 @@ export function PjtProgressView({ cards = [] }: { cards?: CardWithList[] }) {
     return cards
       .map((c) => ({ card: c, stage: normalizeStage(c.listTitle) }))
       .filter((p) => (TARGET_STAGES as readonly string[]).includes(p.stage))
+      // OPEN日が新しい（最近の）ものを上に。未入力は末尾へ。
       .sort((a, b) => {
-        const s = (STAGE_ORDER[a.stage] ?? 9) - (STAGE_ORDER[b.stage] ?? 9)
-        if (s !== 0) return s
-        const ao = a.card.open_date ? new Date(a.card.open_date).getTime() : Infinity
-        const bo = b.card.open_date ? new Date(b.card.open_date).getTime() : Infinity
-        return ao - bo
+        const ao = a.card.open_date ? new Date(a.card.open_date).getTime() : -Infinity
+        const bo = b.card.open_date ? new Date(b.card.open_date).getTime() : -Infinity
+        return bo - ao
       })
   }, [cards])
 
