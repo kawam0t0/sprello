@@ -87,11 +87,11 @@ export function PjtProgressView({ cards = [] }: { cards?: CardWithList[] }) {
     return cards
       .map((c) => ({ card: c, stage: normalizeStage(c.listTitle) }))
       .filter((p) => (TARGET_STAGES as readonly string[]).includes(p.stage))
-      // OPEN日が新しい（最近の）ものを上に。未入力は末尾へ。
+      // 直近にOPENするお店を上に（OPEN日が早い順）。未入力は末尾へ。
       .sort((a, b) => {
-        const ao = a.card.open_date ? new Date(a.card.open_date).getTime() : -Infinity
-        const bo = b.card.open_date ? new Date(b.card.open_date).getTime() : -Infinity
-        return bo - ao
+        const ao = a.card.open_date ? new Date(a.card.open_date).getTime() : Infinity
+        const bo = b.card.open_date ? new Date(b.card.open_date).getTime() : Infinity
+        return ao - bo
       })
   }, [cards])
 
