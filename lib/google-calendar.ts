@@ -21,6 +21,29 @@ export function calendarConfigured(): boolean {
   return !!(process.env.GOOGLE_SA_CLIENT_EMAIL && process.env.GOOGLE_SA_PRIVATE_KEY)
 }
 
+// 秘密鍵(PEM)の文字列ゆらぎを吸収して、確実にPEMへ整える。
+//  - 前後のクォート("や')を除去
+//  - \n / \r\n などのエスケープ改行を実際の改行へ
+//  - "BEGIN" を含まない場合は base64 でエンコードされたPEMとみなしてデコード
+// これで Vercel の環境変数に貼るときの改行崩れ(ERR_OSSL_UNSUPPORTED)を防ぐ。
+function normalizePrivateKey(raw: string): string {
+  let k = (raw || "").trim()
+  // 前後を囲うクォートを外す
+  k = k.replace(/^['"]/, "").replace(/['"]$/, "")
+  if (k.includes("BEGIN")) {
+    // すでにPEM。エスケープ改行を実改行へ。余分な \r は除去。
+    k = k.replace(/\\r\\n/g, "\n").replace(/\\n/g, "\n").replace(/\\r/g, "").replace(/\r/g, "")
+  } else {
+    // BEGINが無い＝base64エンコードされたPEMとみなしてデコード
+    try {
+      k = Buffer.from(k, "base64").toString("utf8").trim()
+    } catch {
+      /* デコード不可ならそのまま（後続でエラーになる） */
+    }
+  }
+  return k
+}
+
 function base64url(input: Buffer | string): string {
   return Buffer.from(input)
     .toString("base64")
@@ -33,7 +56,7 @@ function base64url(input: Buffer | string): string {
 async function getAccessToken(subjectEmail: string): Promise<string> {
   const clientEmail = process.env.GOOGLE_SA_CLIENT_EMAIL
   // Vercelの環境変数では改行が \n 文字列として入ることが多いので実改行へ戻す
-  const privateKey = (process.env.GOOGLE_SA_PRIVATE_KEY || "").replace(/\\n/g, "\n")
+  const privateKey = normalizePrivateKey(process.env.GOOGLE_SA_PRIVATE_KEY || "")
   if (!clientEmail || !privateKey) throw new Error("Google service account env vars are not set")
 
   const now = Math.floor(Date.now() / 1000)
