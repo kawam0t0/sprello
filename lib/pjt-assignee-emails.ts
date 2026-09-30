@@ -3,7 +3,7 @@
 // 名前を変えたり担当者を増やしたときは、ここと lib/pjt-todo-template.ts の
 // PJT_ASSIGNEES、components/pjt-progress-view.tsx の ASSIGNEE_COLORS を合わせて更新すること。
 export const ASSIGNEE_EMAILS: Record<string, string> = {
-  岡村: "mnakata@splashbrothers.co.jp",
+  岡村: "mokamura@splashbrothers.co.jp",
   ラメザニ: "raidien@splashbrothers.co.jp",
   霜田: "hshimoda@splashbrothers.co.jp",
   大野: "aoono@splashbrothers.co.jp",
