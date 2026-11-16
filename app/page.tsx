@@ -46,7 +46,8 @@ function yomiRank(title: string): number {
   if (t.includes("Bヨミ")) return 6
   if (t.includes("Cヨミ")) return 7
   if (t.includes("Dヨミ") || t.includes("未確定")) return 8
-  return 9
+  if (t.includes("ネタ")) return 9
+  return 10
 }
 
 export default function Home() {

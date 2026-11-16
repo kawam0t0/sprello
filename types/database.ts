@@ -7,7 +7,7 @@ export const PROJECT_CATEGORIES: ProjectCategory[] = [
 ]
 
 // 段階（ヨミ）＝ボードの列。6段階。並び順もこの順。（設営中・Dヨミは廃止）
-export const STAGES = ["OPEN", "工事中", "契約済", "Aヨミ", "Bヨミ", "Cヨミ"] as const
+export const STAGES = ["OPEN", "工事中", "契約済", "Aヨミ", "Bヨミ", "Cヨミ", "ネタ"] as const
 export type Stage = (typeof STAGES)[number]
 
 // 段階ごとの色・ピン表示ラベル（地図ピン・フィルタ・タイムライン共通）
@@ -18,6 +18,7 @@ export const STAGE_COLORS: Record<string, string> = {
   Aヨミ: "#2563eb", // 青
   Bヨミ: "#38bdf8", // 水色
   Cヨミ: "#eab308", // 黄
+  ネタ: "#64748b", // グレー（最も初期の見込み）
 }
 // ピンに出す短い表記（OPENはロゴのみなので空）
 export const STAGE_PIN_LABEL: Record<string, string> = {
@@ -27,6 +28,7 @@ export const STAGE_PIN_LABEL: Record<string, string> = {
   Aヨミ: "A",
   Bヨミ: "B",
   Cヨミ: "C",
+  ネタ: "ネタ",
 }
 
 // リスト名/旧ラベルを6段階のいずれかに正規化（完了→OPEN、設営中→工事中、未確定/Dヨミ→Cヨミ）
@@ -37,6 +39,7 @@ export function normalizeStage(title?: string | null): Stage {
   if (t.includes("契約")) return "契約済"
   if (t.includes("Aヨミ")) return "Aヨミ"
   if (t.includes("Bヨミ")) return "Bヨミ"
+  if (t.includes("ネタ")) return "ネタ"
   if (t.includes("Cヨミ") || t.includes("Dヨミ") || t.includes("未確定")) return "Cヨミ"
   return "Cヨミ"
 }
