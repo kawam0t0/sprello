@@ -2,7 +2,7 @@
 
 import type React from "react"
 import { useState } from "react"
-import { Plus, MoreHorizontal, X, Edit, Calendar, Trash2, ExternalLink, LayoutList, CalendarDays, MapIcon, MapPin, ListChecks } from 'lucide-react'
+import { Plus, MoreHorizontal, X, Edit, Calendar, Trash2, ExternalLink, LayoutList, CalendarDays, MapIcon, MapPin, ListChecks, Table } from 'lucide-react'
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Card } from "@/components/ui/card"
@@ -27,6 +27,7 @@ import { ProjectForm, type ProjectFormValues } from "@/components/project-form"
 import { ProjectCard } from "@/components/project-card"
 import { StoresView } from "@/components/stores-view"
 import { PjtProgressView } from "@/components/pjt-progress-view"
+import { ShuttenPlanView } from "@/components/shutten-plan-view"
 
 // Supabase関連のimport
 import { useBoardData } from "@/hooks/use-board-data"
@@ -46,15 +47,14 @@ function yomiRank(title: string): number {
   if (t.includes("Bヨミ")) return 6
   if (t.includes("Cヨミ")) return 7
   if (t.includes("Dヨミ") || t.includes("未確定")) return 8
-  if (t.includes("ネタ")) return 9
-  return 10
+  return 9
 }
 
 export default function Home() {
   // Supabaseからデータを取得
   const { board, loading, error, refetch } = useBoardData()
 
-  const [viewMode, setViewMode] = useState<"pjt" | "board" | "timeline" | "map" | "stores">("board")
+  const [viewMode, setViewMode] = useState<"pjt" | "board" | "shutten" | "timeline" | "map" | "stores">("board")
 
   // ボードのヨミ絞り込み（"all" or list.id）
   const [yomiFilter, setYomiFilter] = useState<string>("all")
@@ -191,6 +191,7 @@ export default function Home() {
         memo: updatedCard.memo,
         open_date: updatedCard.open_date,
         start_date: updatedCard.start_date,
+        setup_date: updatedCard.setup_date,
         candidate_url: updatedCard.candidate_url,
         candidate_url2: updatedCard.candidate_url2,
         company_name: updatedCard.company_name,
@@ -405,6 +406,15 @@ export default function Home() {
                 ボード
               </Button>
               <Button
+                variant={viewMode === "shutten" ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("shutten")}
+                className={viewMode === "shutten" ? "bg-[#163f85] hover:bg-[#10305f]" : "hover:bg-[#163f85]"}
+              >
+                <Table className="w-4 h-4 mr-2" />
+                出店計画
+              </Button>
+              <Button
                 variant={viewMode === "timeline" ? "secondary" : "ghost"}
                 size="sm"
                 onClick={() => setViewMode("timeline")}
@@ -500,6 +510,12 @@ export default function Home() {
                 ))}
             </div>
           </div>
+        ) : viewMode === "shutten" ? (
+          <div className="flex-1 overflow-auto min-h-0 bg-white">
+            <ShuttenPlanView
+              cards={board.lists.flatMap((l) => l.cards.map((c) => ({ ...c, listTitle: l.title })))}
+            />
+          </div>
         ) : viewMode === "timeline" ? (
           <div className="flex-1 p-2 sm:p-4 overflow-x-auto min-h-0 bg-white">
             <TimelineView board={board} />
@@ -566,7 +582,7 @@ export default function Home() {
                   </SelectTrigger>
                   <SelectContent>
                     {board.lists
-                      .filter((l) => !/設営|Dヨミ/.test(l.title))
+                      .filter((l) => !/設営/.test(l.title))
                       .map((l) => (
                         <SelectItem key={l.id} value={l.id}>
                           {l.title}
@@ -863,7 +879,7 @@ export default function Home() {
               </div>
 
               {/* Dates */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <Label htmlFor="openDate">OPEN日</Label>
                   <div className="relative">
@@ -884,6 +900,18 @@ export default function Home() {
                       type="date"
                       value={selectedCard.start_date || ""}
                       onChange={(e) => setSelectedCard({ ...selectedCard, start_date: e.target.value || null })}
+                    />
+                    <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                  </div>
+                </div>
+                <div>
+                  <Label htmlFor="setupDate">設営日</Label>
+                  <div className="relative">
+                    <Input
+                      id="setupDate"
+                      type="date"
+                      value={selectedCard.setup_date || ""}
+                      onChange={(e) => setSelectedCard({ ...selectedCard, setup_date: e.target.value || null })}
                     />
                     <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                   </div>
