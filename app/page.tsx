@@ -28,6 +28,7 @@ import { ProjectCard } from "@/components/project-card"
 import { StoresView } from "@/components/stores-view"
 import { PjtProgressView } from "@/components/pjt-progress-view"
 import { ShuttenPlanView } from "@/components/shutten-plan-view"
+import { prefFromMuniCd } from "@/lib/jp-prefectures"
 
 // Supabase関連のimport
 import { useBoardData } from "@/hooks/use-board-data"
@@ -185,6 +186,16 @@ export default function Home() {
           pop_5km = pop.pop_5km
         }
       }
+      // 都道府県が空なら候補地の座標から自動取得（国土地理院 逆ジオコーダ）
+      let prefecture = updatedCard.prefecture ?? null
+      if (!prefecture && lat != null && lng != null) {
+        try {
+          const rg = await fetch(`/api/revgeo?lat=${lat}&lng=${lng}`).then((r) => r.json())
+          prefecture = prefFromMuniCd(rg?.muniCd) ?? prefecture
+        } catch {
+          /* 取得失敗は無視 */
+        }
+      }
       await updateCard(updatedCard.id, {
         title: updatedCard.title,
         status: updatedCard.status,
@@ -205,7 +216,7 @@ export default function Home() {
         brand: updatedCard.brand,
         store_name: updatedCard.store_name,
         location_type: updatedCard.location_type,
-        prefecture: updatedCard.prefecture,
+        prefecture,
         address: updatedCard.address,
         rank: updatedCard.rank,
         traffic_12h: updatedCard.traffic_12h,
@@ -514,6 +525,7 @@ export default function Home() {
           <div className="flex-1 overflow-auto min-h-0 bg-white">
             <ShuttenPlanView
               cards={board.lists.flatMap((l) => l.cards.map((c) => ({ ...c, listTitle: l.title })))}
+              onRefetch={refetch}
             />
           </div>
         ) : viewMode === "timeline" ? (

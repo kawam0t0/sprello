@@ -154,7 +154,7 @@ export function TimelineView({ board }: TimelineViewProps) {
 
   // ヨミ（段階＝リスト名）ごとのフィルタ用の一覧と件数を作成
   const yomiOptions = useMemo(() => {
-    const order = ["OPEN", "工事中", "設営中", "契約済", "Aヨミ", "Bヨミ", "Cヨミ", "Dヨミ", "ネタ"]
+    const order = ["OPEN", "工事中", "設営中", "契約済", "Aヨミ", "Bヨミ", "Cヨミ", "Dヨミ"]
     const counts = new Map<string, number>()
     timelineItems.forEach((item) => {
       counts.set(item.listTitle, (counts.get(item.listTitle) || 0) + 1)

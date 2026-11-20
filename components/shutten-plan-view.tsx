@@ -1,17 +1,31 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { Download } from "lucide-react"
+import { Download, MapPin, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { updateCard } from "@/lib/database-operations"
+import { prefFromMuniCd } from "@/lib/jp-prefectures"
 import type { Card } from "@/types/database"
 
 type CardWithList = Card & { listTitle?: string }
+
+// 九州エリアの都道府県（この都道府県の店舗はブランドを「SPB九州」で表示）
+const KYUSHU = new Set(["福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県"])
 
 // 住所から都道府県を抽出（prefecture未設定時のフォールバック）
 function prefFromAddress(addr?: string | null): string {
   if (!addr) return ""
   const m = addr.match(/(東京都|北海道|京都府|大阪府|.{2,3}県)/)
   return m ? m[1] : ""
+}
+// カードの都道府県（フィールド → 住所から抽出）
+function prefOf(c: CardWithList): string {
+  return c.prefecture || prefFromAddress(c.address) || ""
+}
+// 表示ブランド：九州エリアは「SPB九州」、それ以外はブランド（無ければスプラッシュンゴー）
+function brandOf(c: CardWithList): string {
+  if (KYUSHU.has(prefOf(c))) return "SPB九州"
+  return c.brand || "スプラッシュンゴー"
 }
 
 // YYYY-MM-DD → 「年」と「M月上旬/中旬/下旬」に分解
@@ -41,7 +55,6 @@ function DateCell({ s }: { s?: string | null }) {
   )
 }
 
-// 絞り込みボタン（ヨミ）
 const YOMI_FILTERS = ["all", "Aヨミ", "Bヨミ", "Cヨミ"] as const
 type YomiFilter = (typeof YOMI_FILTERS)[number]
 
@@ -49,8 +62,15 @@ function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 }
 
-export function ShuttenPlanView({ cards = [] }: { cards?: CardWithList[] }) {
+export function ShuttenPlanView({
+  cards = [],
+  onRefetch,
+}: {
+  cards?: CardWithList[]
+  onRefetch?: () => void
+}) {
   const [yomi, setYomi] = useState<YomiFilter>("all")
+  const [busy, setBusy] = useState(false)
 
   // 日付が1つ以上入っている案件だけ、早い順に。ヨミで絞り込み。
   const rows = useMemo(
@@ -60,6 +80,12 @@ export function ShuttenPlanView({ cards = [] }: { cards?: CardWithList[] }) {
         .filter((c) => yomi === "all" || (c.listTitle ?? "").includes(yomi))
         .sort((a, b) => sortKey(a) - sortKey(b)),
     [cards, yomi],
+  )
+
+  // 都道府県が空で、座標はある案件（自動取得の対象）
+  const missingPref = useMemo(
+    () => cards.filter((c) => !prefOf(c) && c.lat != null && c.lng != null),
+    [cards],
   )
 
   // 期間レンジ（最小月〜最大月）
@@ -77,6 +103,26 @@ export function ShuttenPlanView({ cards = [] }: { cards?: CardWithList[] }) {
 
   const yomiLabel = yomi === "all" ? "" : `（${yomi}）`
 
+  // 都道府県を座標から自動取得（国土地理院の逆ジオコーダ）してDBへ保存
+  const autoFillPref = async () => {
+    if (!missingPref.length || busy) return
+    setBusy(true)
+    try {
+      for (const c of missingPref) {
+        try {
+          const rg = await fetch(`/api/revgeo?lat=${c.lat}&lng=${c.lng}`).then((r) => r.json())
+          const pref = prefFromMuniCd(rg?.muniCd)
+          if (pref) await updateCard(c.id, { prefecture: pref })
+        } catch {
+          /* 1件失敗しても続行 */
+        }
+      }
+      onRefetch?.()
+    } finally {
+      setBusy(false)
+    }
+  }
+
   // PDF（印刷）用のHTMLを別ウィンドウで開いて印刷 → ブラウザの「PDFとして保存」で保存できる
   const downloadPdf = () => {
     const win = window.open("", "_blank", "width=900,height=1200")
@@ -86,14 +132,13 @@ export function ShuttenPlanView({ cards = [] }: { cards?: CardWithList[] }) {
     }
     const body = rows
       .map((c) => {
-        const brand = c.brand || "スプラッシュンゴー"
-        const pref = c.prefecture || prefFromAddress(c.address) || "—"
+        const pref = prefOf(c) || "—"
         const cell = (s?: string | null) => {
           const p = fmtJun(s)
           return p ? `<div class="y">${p.y}</div><div class="md">${p.md}</div>` : `<span class="dash">—</span>`
         }
         return `<tr>
-          <td class="brand">${esc(brand)}</td>
+          <td class="brand">${esc(brandOf(c))}</td>
           <td class="pref">${esc(pref)}</td>
           <td class="name">${esc(c.store_name || c.title)}</td>
           <td class="date">${cell(c.start_date)}</td>
@@ -153,7 +198,7 @@ export function ShuttenPlanView({ cards = [] }: { cards?: CardWithList[] }) {
         </div>
       </div>
 
-      {/* 操作バー：ヨミ絞り込み＋PDF */}
+      {/* 操作バー：ヨミ絞り込み＋都道府県自動取得＋PDF */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         {YOMI_FILTERS.map((f) => (
           <button
@@ -168,14 +213,25 @@ export function ShuttenPlanView({ cards = [] }: { cards?: CardWithList[] }) {
             {f === "all" ? "全て" : f}
           </button>
         ))}
-        <Button
-          size="sm"
-          onClick={downloadPdf}
-          className="ml-auto bg-[#1b4da0] hover:bg-[#163f85]"
-        >
-          <Download className="mr-1.5 h-4 w-4" />
-          PDFでダウンロード
-        </Button>
+        <div className="ml-auto flex items-center gap-2">
+          {missingPref.length > 0 && (
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={autoFillPref}
+              disabled={busy}
+              className="border-[#1b4da0] text-[#1b4da0] hover:bg-blue-50"
+              title="都道府県が空の案件を、候補地の座標から自動取得します"
+            >
+              {busy ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> : <MapPin className="mr-1.5 h-4 w-4" />}
+              都道府県を自動取得（{missingPref.length}）
+            </Button>
+          )}
+          <Button size="sm" onClick={downloadPdf} className="bg-[#1b4da0] hover:bg-[#163f85]">
+            <Download className="mr-1.5 h-4 w-4" />
+            PDFでダウンロード
+          </Button>
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-gray-200">
@@ -192,15 +248,15 @@ export function ShuttenPlanView({ cards = [] }: { cards?: CardWithList[] }) {
           </thead>
           <tbody>
             {rows.map((c, i) => {
-              const brand = c.brand || "スプラッシュンゴー"
-              const isDwash = /d-?wash/i.test(brand)
-              const pref = c.prefecture || prefFromAddress(c.address)
+              const brand = brandOf(c)
+              const special = brand !== "スプラッシュンゴー" // SPB九州・D-wash等は枠付きで強調
+              const pref = prefOf(c)
               return (
                 <tr key={c.id} className={i % 2 ? "bg-gray-50" : "bg-white"}>
                   <td className="whitespace-nowrap border-t border-gray-100 px-4 py-3">
                     <span
                       className={`inline-block rounded px-2 py-1 text-[11px] font-bold ${
-                        isDwash ? "border border-[#1b4da0] text-[#1b4da0]" : "text-gray-600"
+                        special ? "border border-[#1b4da0] text-[#1b4da0]" : "text-gray-600"
                       }`}
                     >
                       {brand}
