@@ -203,6 +203,10 @@ export default function Home() {
         open_date: updatedCard.open_date,
         start_date: updatedCard.start_date,
         setup_date: updatedCard.setup_date,
+        payment1_date: updatedCard.payment1_date,
+        payment1_amount: updatedCard.payment1_amount,
+        payment2_date: updatedCard.payment2_date,
+        payment2_amount: updatedCard.payment2_amount,
         candidate_url: updatedCard.candidate_url,
         candidate_url2: updatedCard.candidate_url2,
         company_name: updatedCard.company_name,
@@ -926,6 +930,63 @@ export default function Home() {
                       onChange={(e) => setSelectedCard({ ...selectedCard, setup_date: e.target.value || null })}
                     />
                     <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                  </div>
+                </div>
+              </div>
+
+              {/* 入金予定 */}
+              <div className="space-y-3">
+                <h3 className="text-lg font-semibold text-gray-800">入金予定</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="pay1date">初回入金予定日</Label>
+                    <div className="relative">
+                      <Input
+                        id="pay1date"
+                        type="date"
+                        value={selectedCard.payment1_date || ""}
+                        onChange={(e) => setSelectedCard({ ...selectedCard, payment1_date: e.target.value || null })}
+                      />
+                      <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="pay1amt">初回金額（円）</Label>
+                    <Input
+                      id="pay1amt"
+                      type="number"
+                      inputMode="numeric"
+                      placeholder="例: 1500000"
+                      value={selectedCard.payment1_amount ?? ""}
+                      onChange={(e) =>
+                        setSelectedCard({ ...selectedCard, payment1_amount: e.target.value === "" ? null : Number(e.target.value) })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="pay2date">二回目入金予定日</Label>
+                    <div className="relative">
+                      <Input
+                        id="pay2date"
+                        type="date"
+                        value={selectedCard.payment2_date || ""}
+                        onChange={(e) => setSelectedCard({ ...selectedCard, payment2_date: e.target.value || null })}
+                      />
+                      <Calendar className="absolute right-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="pay2amt">二回目金額（円）</Label>
+                    <Input
+                      id="pay2amt"
+                      type="number"
+                      inputMode="numeric"
+                      placeholder="例: 1500000"
+                      value={selectedCard.payment2_amount ?? ""}
+                      onChange={(e) =>
+                        setSelectedCard({ ...selectedCard, payment2_amount: e.target.value === "" ? null : Number(e.target.value) })
+                      }
+                    />
                   </div>
                 </div>
               </div>

@@ -55,6 +55,29 @@ function DateCell({ s }: { s?: string | null }) {
   )
 }
 
+function fmtAmount(n?: number | null): string {
+  return n == null ? "" : `¥${n.toLocaleString()}`
+}
+
+// 入金セル：日付（年＋上旬/中旬/下旬）＋金額
+function PayCell({ s, amt }: { s?: string | null; amt?: number | null }) {
+  const p = fmtJun(s)
+  if (!p && amt == null) return <span className="text-gray-300">—</span>
+  return (
+    <div className="leading-tight">
+      {p ? (
+        <>
+          <div className="text-[11px] text-gray-400">{p.y}</div>
+          <div className="text-sm font-semibold text-gray-800">{p.md}</div>
+        </>
+      ) : (
+        <div className="text-gray-300">—</div>
+      )}
+      {amt != null && <div className="text-[11px] font-semibold text-[#1b4da0]">{fmtAmount(amt)}</div>}
+    </div>
+  )
+}
+
 const YOMI_FILTERS = ["all", "Aヨミ", "Bヨミ", "Cヨミ"] as const
 type YomiFilter = (typeof YOMI_FILTERS)[number]
 
@@ -137,6 +160,12 @@ export function ShuttenPlanView({
           const p = fmtJun(s)
           return p ? `<div class="y">${p.y}</div><div class="md">${p.md}</div>` : `<span class="dash">—</span>`
         }
+        const payCell = (s?: string | null, amt?: number | null) => {
+          const p = fmtJun(s)
+          const d = p ? `<div class="y">${p.y}</div><div class="md">${p.md}</div>` : amt != null ? "" : `<span class="dash">—</span>`
+          const a = amt != null ? `<div class="amt">¥${amt.toLocaleString()}</div>` : ""
+          return d + a
+        }
         return `<tr>
           <td class="brand">${esc(brandOf(c))}</td>
           <td class="pref">${esc(pref)}</td>
@@ -144,6 +173,8 @@ export function ShuttenPlanView({
           <td class="date">${cell(c.start_date)}</td>
           <td class="date">${cell(c.setup_date)}</td>
           <td class="date">${cell(c.open_date)}</td>
+          <td class="date">${payCell(c.payment1_date, c.payment1_amount)}</td>
+          <td class="date">${payCell(c.payment2_date, c.payment2_amount)}</td>
         </tr>`
       })
       .join("")
@@ -168,6 +199,7 @@ export function ShuttenPlanView({
   td.date .y { font-size:10px; color:#9ca3af; }
   td.date .md { font-size:12px; font-weight:700; color:#1f2937; }
   td.date .dash { color:#d1d5db; }
+  td.date .amt { font-size:10px; color:#1b4da0; font-weight:700; }
 </style></head>
 <body>
   <div class="brandline">スプラッシュンゴー</div>
@@ -176,7 +208,7 @@ export function ShuttenPlanView({
   <table>
     <thead><tr>
       <th>ブランド</th><th>都道府県</th><th>プロジェクト名</th>
-      <th class="c">着工</th><th class="c">設営</th><th class="c">OPEN</th>
+      <th class="c">着工</th><th class="c">設営</th><th class="c">OPEN</th><th class="c">初回入金</th><th class="c">二回目入金</th>
     </tr></thead>
     <tbody>${body}</tbody>
   </table>
@@ -244,6 +276,8 @@ export function ShuttenPlanView({
               <th className="px-4 py-3 text-center font-semibold">着工</th>
               <th className="px-4 py-3 text-center font-semibold">設営</th>
               <th className="px-4 py-3 text-center font-semibold">OPEN</th>
+              <th className="px-4 py-3 text-center font-semibold">初回入金</th>
+              <th className="px-4 py-3 text-center font-semibold">二回目入金</th>
             </tr>
           </thead>
           <tbody>
@@ -277,12 +311,18 @@ export function ShuttenPlanView({
                   <td className="border-t border-gray-100 px-4 py-3 text-center">
                     <DateCell s={c.open_date} />
                   </td>
+                  <td className="border-t border-gray-100 px-4 py-3 text-center">
+                    <PayCell s={c.payment1_date} amt={c.payment1_amount} />
+                  </td>
+                  <td className="border-t border-gray-100 px-4 py-3 text-center">
+                    <PayCell s={c.payment2_date} amt={c.payment2_amount} />
+                  </td>
                 </tr>
               )
             })}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-gray-400">
+                <td colSpan={8} className="px-4 py-10 text-center text-gray-400">
                   日付が入力された案件がありません
                 </td>
               </tr>

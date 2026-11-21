@@ -197,6 +197,10 @@ export interface Card {
   open_date: string | null
   start_date: string | null
   setup_date?: string | null // 設営日
+  payment1_date?: string | null // 初回入金予定日
+  payment1_amount?: number | null // 初回入金額（円）
+  payment2_date?: string | null // 二回目入金予定日
+  payment2_amount?: number | null // 二回目入金額（円）
   candidate_url: string
   candidate_url2: string
   company_name: string

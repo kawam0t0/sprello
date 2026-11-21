@@ -102,30 +102,17 @@ export function TimelineView({ board }: TimelineViewProps) {
           }
 
           const paymentDates: { start: Date; end: Date }[] = []
-          
-          if (startDate) {
-            const payment1Start = new Date(startDate)
-            payment1Start.setDate(payment1Start.getDate() - 10)
-            const payment1End = new Date(payment1Start)
-            payment1End.setDate(payment1End.getDate() + 6)
-            paymentDates.push({ start: payment1Start, end: payment1End })
+          // 着金は保存済みの入金予定日（初回・二回目）を表示する（自動計算はしない）
+          const pushPayment = (d?: string | null) => {
+            if (!d) return
+            const s = new Date(d)
+            if (isNaN(s.getTime())) return
+            const e = new Date(s)
+            e.setDate(e.getDate() + 6)
+            paymentDates.push({ start: s, end: e })
           }
-          
-          if (setupStartDate) {
-            const payment2Start = new Date(setupStartDate)
-            payment2Start.setMonth(payment2Start.getMonth() - 1)
-            const payment2End = new Date(payment2Start)
-            payment2End.setDate(payment2End.getDate() + 6)
-            paymentDates.push({ start: payment2Start, end: payment2End })
-          }
-          
-          if (openDate) {
-            const payment3Start = new Date(openDate)
-            payment3Start.setMonth(payment3Start.getMonth() + 1)
-            const payment3End = new Date(payment3Start)
-            payment3End.setDate(payment3End.getDate() + 6)
-            paymentDates.push({ start: payment3Start, end: payment3End })
-          }
+          pushPayment(card.payment1_date)
+          pushPayment(card.payment2_date)
 
           items.push({
             card,
