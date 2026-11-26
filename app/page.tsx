@@ -24,7 +24,7 @@ import { Switch } from "@/components/ui/switch"
 import { TimelineView } from "@/components/timeline-view"
 import { MapView } from "@/components/map-view"
 import { ProjectForm, type ProjectFormValues } from "@/components/project-form"
-import { ProjectCard } from "@/components/project-card"
+import { BoardTableView } from "@/components/board-table-view"
 import { StoresView } from "@/components/stores-view"
 import { PjtProgressView } from "@/components/pjt-progress-view"
 import { ShuttenPlanView } from "@/components/shutten-plan-view"
@@ -502,9 +502,9 @@ export default function Home() {
                 ))}
             </div>
 
-            {/* 追加順のカードグリッド */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {board.lists
+            {/* プロジェクト一覧（行形式のテーブル） */}
+            <BoardTableView
+              rows={board.lists
                 .filter((l) => yomiFilter === "all" || l.id === yomiFilter)
                 .flatMap((l) => l.cards.map((c) => ({ card: c, listTitle: l.title })))
                 .sort((a, b) => {
@@ -514,16 +514,10 @@ export default function Home() {
                   const ao = a.card.open_date ? new Date(a.card.open_date).getTime() : Infinity
                   const bo = b.card.open_date ? new Date(b.card.open_date).getTime() : Infinity
                   return ao - bo
-                })
-                .map(({ card }) => (
-                  <ProjectCard
-                    key={card.id}
-                    card={card}
-                    onOpen={handleCardDoubleClick}
-                    onDelete={(id) => handleDeleteClick(id, card.list_id)}
-                  />
-                ))}
-            </div>
+                })}
+              onOpen={handleCardDoubleClick}
+              onDelete={(card) => handleDeleteClick(card.id, card.list_id)}
+            />
           </div>
         ) : viewMode === "shutten" ? (
           <div className="flex-1 overflow-auto min-h-0 bg-white">

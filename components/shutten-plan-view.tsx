@@ -28,14 +28,12 @@ function brandOf(c: CardWithList): string {
   return c.brand || "スプラッシュンゴー"
 }
 
-// YYYY-MM-DD → 「年」と「M月上旬/中旬/下旬」に分解
+// YYYY-MM-DD → 「年」と「M月D日」に分解（確定した正確な日付を表示）
 function fmtJun(s?: string | null): { y: string; md: string } | null {
   if (!s) return null
   const d = new Date(s)
   if (isNaN(d.getTime())) return null
-  const day = d.getDate()
-  const jun = day <= 10 ? "上旬" : day <= 20 ? "中旬" : "下旬"
-  return { y: `${d.getFullYear()}年`, md: `${d.getMonth() + 1}月${jun}` }
+  return { y: `${d.getFullYear()}年`, md: `${d.getMonth() + 1}月${d.getDate()}日` }
 }
 
 // 並び順キー：OPEN→設営→着工のうち一番早い日付
