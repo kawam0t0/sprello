@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button"
 import { updateCard } from "@/lib/database-operations"
 import { prefFromMuniCd } from "@/lib/jp-prefectures"
 import type { Card } from "@/types/database"
+import { normalizeCategory } from "@/types/database"
 
 type CardWithList = Card & { listTitle?: string }
 
@@ -25,7 +26,9 @@ function prefOf(c: CardWithList): string {
 // 表示ブランド：九州エリアは「SPB九州」、それ以外はブランド（無ければスプラッシュンゴー）
 function brandOf(c: CardWithList): string {
   if (KYUSHU.has(prefOf(c))) return "SPB九州"
-  return c.brand || "スプラッシュンゴー"
+  // ブランド名はタスク詳細の「ブランド名」＝カテゴリ(category)が基準。
+  // brandは手でプルダウンを変えたときだけ入るので、categoryを優先し補助にbrandを見る。
+  return normalizeCategory(c.category ?? c.brand)
 }
 
 // YYYY-MM-DD → 「年」と、確定段階は「M月D日」、ヨミ段階(fuzzy)は「M月上旬/中旬/下旬」に分解
