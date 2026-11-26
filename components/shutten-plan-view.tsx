@@ -114,7 +114,12 @@ export function ShuttenPlanView({
   const rows = useMemo(
     () =>
       cards
-        .filter((c) => c.open_date || c.setup_date || c.start_date)
+        .filter((c) => {
+          const stage = c.listTitle ?? ""
+          const hasDate = c.open_date || c.setup_date || c.start_date
+          // Cヨミ・Dヨミは日付が未入力でも表示する（それ以外は日付があるものだけ）
+          return hasDate || stage.includes("Cヨミ") || stage.includes("Dヨミ")
+        })
         .filter((c) => selected.length === 0 || selected.includes(c.listTitle ?? ""))
         .sort((a, b) => sortKey(a) - sortKey(b)),
     [cards, selected],
