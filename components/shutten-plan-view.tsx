@@ -86,8 +86,12 @@ function PayCell({ s, amt, fuzzy }: { s?: string | null; amt?: number | null; fu
   )
 }
 
-const YOMI_FILTERS = ["all", "Aヨミ", "Bヨミ", "Cヨミ"] as const
-type YomiFilter = (typeof YOMI_FILTERS)[number]
+// 段階の並び順（ボードと同じ。設営中・Dヨミはボード同様に絞り込みへ出さない）
+const STAGE_ORDER = ["OPEN", "工事中", "契約済", "Aヨミ", "Bヨミ", "Cヨミ"]
+const stageRank = (t: string) => {
+  const i = STAGE_ORDER.indexOf(t)
+  return i === -1 ? STAGE_ORDER.length : i
+}
 
 function esc(s: string): string {
   return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
@@ -100,7 +104,7 @@ export function ShuttenPlanView({
   cards?: CardWithList[]
   onRefetch?: () => void
 }) {
-  const [yomi, setYomi] = useState<YomiFilter>("all")
+  const [selected, setSelected] = useState<string[]>([]) // 選択中の段階。空＝全て
   const [busy, setBusy] = useState(false)
 
   // 日付が1つ以上入っている案件だけ、早い順に。ヨミで絞り込み。
@@ -108,9 +112,9 @@ export function ShuttenPlanView({
     () =>
       cards
         .filter((c) => c.open_date || c.setup_date || c.start_date)
-        .filter((c) => yomi === "all" || (c.listTitle ?? "").includes(yomi))
+        .filter((c) => selected.length === 0 || selected.includes(c.listTitle ?? ""))
         .sort((a, b) => sortKey(a) - sortKey(b)),
-    [cards, yomi],
+    [cards, selected],
   )
 
   // 都道府県が空で、座標はある案件（自動取得の対象）
@@ -118,6 +122,16 @@ export function ShuttenPlanView({
     () => cards.filter((c) => !prefOf(c) && c.lat != null && c.lng != null),
     [cards],
   )
+
+  // 絞り込みに出す段階（ボードと同じ。カードに存在する段階だけ、順番統一）
+  const stageOptions = useMemo(() => {
+    const set = new Set<string>()
+    for (const c of cards) {
+      const t = c.listTitle ?? ""
+      if (t && !/設営|Dヨミ/.test(t)) set.add(t)
+    }
+    return Array.from(set).sort((a, b) => stageRank(a) - stageRank(b))
+  }, [cards])
 
   // 期間レンジ（最小月〜最大月）
   const range = useMemo(() => {
@@ -132,7 +146,7 @@ export function ShuttenPlanView({
     return `${min.getFullYear()}年${min.getMonth() + 1}月 〜 ${max.getFullYear()}年${max.getMonth() + 1}月`
   }, [rows])
 
-  const yomiLabel = yomi === "all" ? "" : `（${yomi}）`
+  const yomiLabel = selected.length === 0 ? "" : `（${selected.join("・")}）`
 
   // 都道府県を座標から自動取得（国土地理院の逆ジオコーダ）してDBへ保存
   const autoFillPref = async () => {
@@ -241,19 +255,32 @@ export function ShuttenPlanView({
 
       {/* 操作バー：ヨミ絞り込み＋都道府県自動取得＋PDF */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
-        {YOMI_FILTERS.map((f) => (
-          <button
-            key={f}
-            onClick={() => setYomi(f)}
-            className={`rounded-full border px-3 py-1 text-sm font-medium ${
-              yomi === f
-                ? "border-[#1b4da0] bg-[#1b4da0] text-white"
-                : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
-            }`}
-          >
-            {f === "all" ? "全て" : f}
-          </button>
-        ))}
+        <button
+          onClick={() => setSelected([])}
+          className={`rounded-full border px-3 py-1 text-sm font-medium ${
+            selected.length === 0
+              ? "border-[#1b4da0] bg-[#1b4da0] text-white"
+              : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
+          }`}
+        >
+          全て
+        </button>
+        {stageOptions.map((t) => {
+          const on = selected.includes(t)
+          return (
+            <button
+              key={t}
+              onClick={() => setSelected((prev) => (on ? prev.filter((x) => x !== t) : [...prev, t]))}
+              className={`rounded-full border px-3 py-1 text-sm font-medium ${
+                on
+                  ? "border-[#1b4da0] bg-[#1b4da0] text-white"
+                  : "border-gray-300 bg-white text-gray-600 hover:bg-gray-50"
+              }`}
+            >
+              {t}
+            </button>
+          )
+        })}
         <div className="ml-auto flex items-center gap-2">
           {missingPref.length > 0 && (
             <Button
