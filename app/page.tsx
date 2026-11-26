@@ -486,7 +486,7 @@ export default function Home() {
                 全て ({board.lists.reduce((n, l) => n + l.cards.length, 0)})
               </button>
               {board.lists
-                .filter((list) => !/設営|Dヨミ/.test(list.title))
+                .filter((list) => !/設営/.test(list.title))
                 .map((list) => (
                   <button
                     key={list.id}

@@ -87,7 +87,7 @@ function PayCell({ s, amt, fuzzy }: { s?: string | null; amt?: number | null; fu
 }
 
 // 段階の並び順（ボードと同じ。設営中・Dヨミはボード同様に絞り込みへ出さない）
-const STAGE_ORDER = ["OPEN", "工事中", "契約済", "Aヨミ", "Bヨミ", "Cヨミ"]
+const STAGE_ORDER = ["OPEN", "工事中", "契約済", "Aヨミ", "Bヨミ", "Cヨミ", "Dヨミ"]
 const stageRank = (t: string) => {
   const i = STAGE_ORDER.indexOf(t)
   return i === -1 ? STAGE_ORDER.length : i
@@ -128,7 +128,7 @@ export function ShuttenPlanView({
     const set = new Set<string>()
     for (const c of cards) {
       const t = c.listTitle ?? ""
-      if (t && !/設営|Dヨミ/.test(t)) set.add(t)
+      if (t && !/設営/.test(t)) set.add(t)
     }
     return Array.from(set).sort((a, b) => stageRank(a) - stageRank(b))
   }, [cards])
