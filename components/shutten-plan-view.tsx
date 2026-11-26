@@ -28,12 +28,22 @@ function brandOf(c: CardWithList): string {
   return c.brand || "スプラッシュンゴー"
 }
 
-// YYYY-MM-DD → 「年」と「M月D日」に分解（確定した正確な日付を表示）
-function fmtJun(s?: string | null): { y: string; md: string } | null {
+// YYYY-MM-DD → 「年」と、確定段階は「M月D日」、ヨミ段階(fuzzy)は「M月上旬/中旬/下旬」に分解
+function fmtJun(s?: string | null, fuzzy = false): { y: string; md: string } | null {
   if (!s) return null
   const d = new Date(s)
   if (isNaN(d.getTime())) return null
+  if (fuzzy) {
+    const day = d.getDate()
+    const jun = day <= 10 ? "上旬" : day <= 20 ? "中旬" : "下旬"
+    return { y: `${d.getFullYear()}年`, md: `${d.getMonth() + 1}月${jun}` }
+  }
   return { y: `${d.getFullYear()}年`, md: `${d.getMonth() + 1}月${d.getDate()}日` }
+}
+
+// A/B/C/Dヨミ（まだ確定前）の段階は日付を曖昧（上旬/中旬/下旬）に表示する
+function isFuzzy(c: CardWithList): boolean {
+  return (c.listTitle ?? "").includes("ヨミ")
 }
 
 // 並び順キー：OPEN→設営→着工のうち一番早い日付
@@ -42,8 +52,8 @@ function sortKey(c: CardWithList): number {
   return s ? new Date(s).getTime() : Infinity
 }
 
-function DateCell({ s }: { s?: string | null }) {
-  const p = fmtJun(s)
+function DateCell({ s, fuzzy }: { s?: string | null; fuzzy?: boolean }) {
+  const p = fmtJun(s, fuzzy)
   if (!p) return <span className="text-gray-300">—</span>
   return (
     <div className="leading-tight">
@@ -58,8 +68,8 @@ function fmtAmount(n?: number | null): string {
 }
 
 // 入金セル：日付（年＋上旬/中旬/下旬）＋金額
-function PayCell({ s, amt }: { s?: string | null; amt?: number | null }) {
-  const p = fmtJun(s)
+function PayCell({ s, amt, fuzzy }: { s?: string | null; amt?: number | null; fuzzy?: boolean }) {
+  const p = fmtJun(s, fuzzy)
   if (!p && amt == null) return <span className="text-gray-300">—</span>
   return (
     <div className="leading-tight">
@@ -154,12 +164,13 @@ export function ShuttenPlanView({
     const body = rows
       .map((c) => {
         const pref = prefOf(c) || "—"
+        const fuzzy = isFuzzy(c)
         const cell = (s?: string | null) => {
-          const p = fmtJun(s)
+          const p = fmtJun(s, fuzzy)
           return p ? `<div class="y">${p.y}</div><div class="md">${p.md}</div>` : `<span class="dash">—</span>`
         }
         const payCell = (s?: string | null, amt?: number | null) => {
-          const p = fmtJun(s)
+          const p = fmtJun(s, fuzzy)
           const d = p ? `<div class="y">${p.y}</div><div class="md">${p.md}</div>` : amt != null ? "" : `<span class="dash">—</span>`
           const a = amt != null ? `<div class="amt">¥${amt.toLocaleString()}</div>` : ""
           return d + a
@@ -283,6 +294,7 @@ export function ShuttenPlanView({
               const brand = brandOf(c)
               const special = brand !== "スプラッシュンゴー" // SPB九州・D-wash等は枠付きで強調
               const pref = prefOf(c)
+              const fuzzy = isFuzzy(c)
               return (
                 <tr key={c.id} className={i % 2 ? "bg-gray-50" : "bg-white"}>
                   <td className="whitespace-nowrap border-t border-gray-100 px-4 py-3">
@@ -301,19 +313,19 @@ export function ShuttenPlanView({
                     {c.store_name || c.title}
                   </td>
                   <td className="border-t border-gray-100 px-4 py-3 text-center">
-                    <DateCell s={c.start_date} />
+                    <DateCell s={c.start_date} fuzzy={fuzzy} />
                   </td>
                   <td className="border-t border-gray-100 px-4 py-3 text-center">
-                    <DateCell s={c.setup_date} />
+                    <DateCell s={c.setup_date} fuzzy={fuzzy} />
                   </td>
                   <td className="border-t border-gray-100 px-4 py-3 text-center">
-                    <DateCell s={c.open_date} />
+                    <DateCell s={c.open_date} fuzzy={fuzzy} />
                   </td>
                   <td className="border-t border-gray-100 px-4 py-3 text-center">
-                    <PayCell s={c.payment1_date} amt={c.payment1_amount} />
+                    <PayCell s={c.payment1_date} amt={c.payment1_amount} fuzzy={fuzzy} />
                   </td>
                   <td className="border-t border-gray-100 px-4 py-3 text-center">
-                    <PayCell s={c.payment2_date} amt={c.payment2_amount} />
+                    <PayCell s={c.payment2_date} amt={c.payment2_amount} fuzzy={fuzzy} />
                   </td>
                 </tr>
               )
